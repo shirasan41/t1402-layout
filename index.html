@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>T1402 共創拠点 3Dレイアウト</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+  body { display: flex; flex-direction: column; background: #f0f2f5; }
+  header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 14px; background: #2c3e50; color: #fff; flex-shrink: 0; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; font-weight: 600; }
+  header .spacer { flex: 1; }
+  header button, header label.tgl {
+    padding: 5px 12px; border: 1px solid #56708a; border-radius: 4px;
+    background: #3d5570; color: #fff; font-size: 12px; cursor: pointer; user-select: none;
+  }
+  header button:hover, header label.tgl:hover { background: #4a6585; }
+  header button.active { background: #1abc9c; border-color: #1abc9c; }
+  header label.tgl input { margin-right: 4px; vertical-align: -1px; }
+  #main { display: flex; flex: 1; min-height: 0; }
+  #sidebar {
+    width: 260px; flex-shrink: 0; background: #fff; border-right: 1px solid #dde2e8;
+    overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px;
+  }
+  #sidebar.hidden { display: none; }
+  @media (max-width: 700px) { #sidebar { width: 210px; } }
+  .panel h2 { font-size: 12px; color: #7f8c9b; font-weight: 600; margin-bottom: 6px; letter-spacing: 0.05em; }
+  #selInfo { font-size: 12px; color: #445; background: #f4f7f9; border-radius: 6px; padding: 8px; min-height: 44px; line-height: 1.5; }
+  .btnrow { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .btnrow button {
+    padding: 5px 10px; border: 1px solid #cfd8e0; border-radius: 4px; background: #f8fafb;
+    font-size: 12px; cursor: pointer;
+  }
+  .btnrow button:hover { background: #eef3f6; }
+  .btnrow button.danger { color: #c0392b; border-color: #e5b8b2; }
+  ul.legend { list-style: none; font-size: 12px; color: #445; }
+  ul.legend li { display: flex; align-items: center; gap: 7px; padding: 3px 0; line-height: 1.35; }
+  ul.legend .chip { width: 13px; height: 13px; border-radius: 3px; border: 1px solid rgba(0,0,0,.18); flex-shrink: 0; }
+  ul.legend small { color: #93a0ac; display: block; font-size: 10px; }
+  .hint { font-size: 11px; color: #8a97a4; line-height: 1.7; }
+  .swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-bottom: 6px; }
+  .swatches button {
+    aspect-ratio: 1; border-radius: 4px; border: 1px solid rgba(0,0,0,.22); cursor: pointer;
+  }
+  .swatches button:hover { outline: 2px solid #1abc9c; }
+  #viewport { flex: 1; position: relative; min-width: 0; }
+  #viewport canvas { display: block; }
+  #toast {
+    position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    background: rgba(30,40,50,.85); color: #fff; font-size: 12px; padding: 7px 16px;
+    border-radius: 20px; opacity: 0; transition: opacity .3s; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>T1402 共創拠点 3Dレイアウト（タワー75・14F）</h1>
+  <span class="spacer"></span>
+  <button id="btnPanel">☰ パネル</button>
+  <button id="btnDragMode">ドラッグ: 視点回転</button>
+  <label class="tgl"><input type="checkbox" id="chkNew" checked>新規（AICHI）</label>
+  <label class="tgl"><input type="checkbox" id="chkOld" checked>既存什器</label>
+  <button id="btnTop">真上から</button>
+  <button id="btn3d" class="active">3D視点</button>
+  <button id="btnWalk">人視点</button>
+  <button id="btnSave">配置を保存</button>
+  <button id="btnReset">初期配置に戻す</button>
+</header>
+<div id="main">
+  <div id="sidebar">
+    <div class="panel">
+      <h2>選択中</h2>
+      <div id="selInfo">家具をクリックで選択、ドラッグで移動。<br>Q / E キーで回転できます。</div>
+      <div class="btnrow">
+        <button id="btnRotL">⟲ 15°</button>
+        <button id="btnRotR">⟳ 15°</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>新規（axona AICHI）</h2>
+      <ul class="legend" id="legendNew"></ul>
+    </div>
+    <div class="panel">
+      <h2>既存什器</h2>
+      <ul class="legend" id="legendOld"></ul>
+    </div>
+    <div class="panel">
+      <h2>ベンチ張地カラー（FAT / FTW）</h2>
+      <div id="palette" class="swatches"></div>
+      <div class="hint">JELLYベンチを選択してから色をクリック</div>
+    </div>
+    <div class="panel">
+      <h2>操作</h2>
+      <div class="hint">
+        家具ドラッグ：移動 ／ Q・E か ⟲⟳：回転<br>
+        余白ドラッグ：視点の回転<br>
+        右ドラッグ・2本指・矢印キー：視点の上下左右移動<br>
+        ホイール／ピンチ：ズーム<br>
+        人視点：ドラッグで見回し・矢印キーで歩く
+      </div>
+    </div>
+  </div>
+  <div id="viewport"><div id="toast"></div></div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ================= 基本設定（単位: m / 図面PDFベクターデータから採寸） ================= */
+const ROOM_W = 17.88, ROOM_D = 12.42;
+// 平面座標 (x, y): 左下原点・y北向き。three.js では z = -y
+const Z = y => -y;
+// 主要通り芯: 間仕切り壁 x=3.614 / ラウンジ右壁 x=9.915 / 上部ゾーン南壁 y=8.216
+// 玄関側廊下壁 y=9.566（1800出入り口 x10.526..12.325）/ 北東ブロック x15.43.. y6.89..8.06
+
+const COL = {
+  WH10:0xf5f5f1, LW02:0xd9bd93, silver:0xb4b8bd, steelDark:0x3c3f45,
+  FPT21:0xd2a02a, FPT71:0x6f9e46, FPT48:0x35507e, FTW19:0x2e2e33,
+  duneWhite:0xefefec, wine:0x8e3e4b, chairBlack:0x35343a, whiteLeg:0xe6e6e3,
+  walnut:0x4b3a2f, CA:0x5c4334, shelfWood:0xd6b183, shelfWhite:0xf2f2ed,
+  wall:0xe9e7e2, glass:0xbcd9e6, mullion:0x5a5f66, door:0x9aa1ab,
+  boardWhite:0xfafafa, frameGray:0xc6cacd, cork:0xb9905e,
+  benchBlue:0x5a6d86, red:0xb03040, floorVoid:0x74797f
+};
+
+function mat(c, rough=0.85, metal=0){ return new THREE.MeshStandardMaterial({color:c, roughness:rough, metalness:metal}); }
+
+/* ---- プロシージャルテクスチャ（木目・布地・カーペット） ---- */
+function canvasTex(draw, w=512, h=512, rep=[1,1]){
+  const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+  draw(cv.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep[0], rep[1]);
+  return t;
+}
+function woodTex(base, streak){ // streak: 'r,g,b'
+  return canvasTex((g,w,h)=>{
+    g.fillStyle = base; g.fillRect(0,0,w,h);
+    for(let i=0;i<65;i++){
+      const y = Math.random()*h;
+      g.strokeStyle = `rgba(${streak},${(0.05+Math.random()*0.16).toFixed(2)})`;
+      g.lineWidth = 0.5 + Math.random()*2.4;
+      g.beginPath(); g.moveTo(-10, y);
+      for(let x=0; x<=w+32; x+=32) g.lineTo(x, y + Math.sin(x*0.02+i*3)*3 + (Math.random()-0.5)*2.5);
+      g.stroke();
+    }
+    const im = g.getImageData(0,0,w,h), d = im.data;
+    for(let p=0;p<d.length;p+=4){ const n=(Math.random()-0.5)*9; d[p]+=n; d[p+1]+=n; d[p+2]+=n; }
+    g.putImageData(im,0,0);
+  });
+}
+function fabricTex(){ // ブークレ調の布地（明るいグレー地・material.colorで着色）
+  return canvasTex((g,w,h)=>{
+    g.fillStyle = '#d8d8d8'; g.fillRect(0,0,w,h);
+    for(let y=0;y<h;y+=5){ // 編み目の列
+      g.fillStyle = 'rgba(105,105,105,0.10)';
+      g.fillRect(0, y, w, 1.5);
+    }
+    for(let i=0;i<8500;i++){ // ループパイルの粒
+      const v = 168 + Math.random()*85 | 0;
+      g.fillStyle = `rgba(${v},${v},${v},${(0.45+Math.random()*0.5).toFixed(2)})`;
+      g.beginPath();
+      g.arc(Math.random()*w, Math.random()*h, 0.8+Math.random()*1.8, 0, 7);
+      g.fill();
+    }
+  }, 256, 256, [1.6,1.6]);
+}
+const TEX = {
+  beech: woodTex('#d4b183','140,95,55'),
+  lw02:  woodTex('#dcc098','150,110,70'),
+  ca:    woodTex('#5c4334','25,16,10'),
+  shelf: woodTex('#d6b183','150,105,60'),
+  fab:   fabricTex(),
+  melamine: canvasTex((g,w,h)=>{ // WH10 メラミン化粧板の微細な地
+    g.fillStyle = '#f4f4f0'; g.fillRect(0,0,w,h);
+    const im = g.getImageData(0,0,w,h), d = im.data;
+    for(let p=0;p<d.length;p+=4){ const n=(Math.random()-0.5)*5; d[p]+=n; d[p+1]+=n; d[p+2]+=n; }
+    g.putImageData(im,0,0);
+  }, 256, 256, [1,1]),
+  plaster: canvasTex((g,w,h)=>{ // 壁の微細な塗装ムラ
+    g.fillStyle = '#e9e7e2'; g.fillRect(0,0,w,h);
+    const im = g.getImageData(0,0,w,h), d = im.data;
+    for(let p=0;p<d.length;p+=4){ const n=(Math.random()-0.5)*7; d[p]+=n; d[p+1]+=n; d[p+2]+=n; }
+    g.putImageData(im,0,0);
+  }, 256, 256, [3,3]),
+};
+const WALL_M = new THREE.MeshStandardMaterial({map:TEX.plaster, roughness:0.95});
+function woodMat(tex, rough=0.6){ return new THREE.MeshStandardMaterial({map:tex, roughness:rough}); }
+function fabMat(color){ return new THREE.MeshStandardMaterial({color, map:TEX.fab, bumpMap:TEX.fab, bumpScale:0.6, roughness:0.98}); }
+function box(w,h,d,m,x=0,y=0,z=0){ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(x,y,z); o.castShadow=o.receiveShadow=true; return o; }
+function cyl(r,h,m,x=0,y=0,z=0,seg=20){ const o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),m); o.position.set(x,y,z); o.castShadow=true; return o; }
+
+/* ================= シーン ================= */
+const viewport = document.getElementById('viewport');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xdfe5ea);
+const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+viewport.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(ROOM_W/2, 0.4, Z(ROOM_D/2));
+controls.maxPolarAngle = Math.PI/2 - 0.02;
+controls.screenSpacePanning = true;   // 右ドラッグ/2本指で上下左右の平行移動
+controls.listenToKeyEvents(window);   // 矢印キーでもパン
+controls.keyPanSpeed = 14;
+function view3d(){
+  controls.maxPolarAngle = Math.PI/2 - 0.02; controls.screenSpacePanning = true;
+  const fitH = Math.max(ROOM_D+2, (ROOM_W+2)/camera.aspect);
+  const dist = (fitH/2) / Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+  controls.target.set(ROOM_W/2, 0.3, Z(ROOM_D/2));
+  camera.position.set(ROOM_W/2, 0.3 + dist*0.60, Z(ROOM_D/2) + dist*0.80);
+  controls.update();
+}
+function viewTop(){
+  controls.maxPolarAngle = Math.PI/2 - 0.02; controls.screenSpacePanning = true;
+  const fitH = Math.max(ROOM_D+1, (ROOM_W+1)/camera.aspect);
+  const dist = (fitH/2) / Math.tan(THREE.MathUtils.degToRad(camera.fov/2));
+  camera.position.set(ROOM_W/2, dist, Z(ROOM_D/2)+0.01);
+  controls.target.set(ROOM_W/2, 0, Z(ROOM_D/2));
+  controls.update();
+}
+function viewWalk(){ // 人間の目線（H1500）。ドラッグで見回し、矢印キー/右ドラッグで移動
+  controls.maxPolarAngle = Math.PI - 0.12; controls.screenSpacePanning = false;
+  camera.position.set(8.2, 1.5, Z(1.0));
+  controls.target.set(8.2, 1.42, Z(3.4));
+  controls.update();
+}
+view3d();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8f9aa5, 0.95));
+const sun = new THREE.DirectionalLight(0xfff4e0, 1.15);
+sun.position.set(ROOM_W/2+3, 14, Z(-3));
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+const sc = sun.shadow.camera;
+sc.left=-14; sc.right=14; sc.top=14; sc.bottom=-14; sc.far=40;
+sun.target.position.set(ROOM_W/2, 0, Z(ROOM_D/2)); scene.add(sun, sun.target);
+
+/* ================= 床（タイルカーペット 東リGA-100W） ================= */
+// 部屋形状（図面採寸）: 左上ゾーン + メインゾーンのL字 − 北東の前室/ブロック
+const LOUNGE = {x1:6.417, y1:8.12, x2:9.915, y2:12.42}; // カーペット貼分け（GA1855W）
+
+function inRoom(x, y){
+  if (x<0||x>ROOM_W||y<0||y>ROOM_D) return false;
+  if (x<3.614 && y<8.216) return false;                    // 南西の別室
+  if (x>9.915 && y>9.566) return false;                    // ラウンジ東の玄関ホール
+  if (x>14.726 && y>8.9) return false;                     // 北東の前室
+  if (x>=16.05 && x<=17.66 && y>=7.91 && y<=8.9) return false; // 北東ブロック（PS/柱）
+  return true;
+}
+
+(function makeFloor(){
+  const px = 100; // px per m
+  const cv = document.createElement('canvas');
+  cv.width = ROOM_W*px; cv.height = ROOM_D*px;
+  const g = cv.getContext('2d');
+  const t = 0.5*px; // 50cmタイル
+  for(let iy=0; iy<ROOM_D/0.5; iy++){
+    for(let ix=0; ix<ROOM_W/0.5; ix++){
+      const cx = ix*0.5+0.25, cy = ROOM_D-(iy*0.5+0.25); // canvas上=北
+      const X = ix*t, Y = iy*t;
+      if (!inRoom(cx,cy)){ // 室外（玄関ホール・前室・別室）は明るい廊下床
+        g.fillStyle = ((ix+iy)%2) ? '#aab0b7' : '#a3a9b0';
+        g.fillRect(X,Y,t,t);
+        continue;
+      }
+      const vary = ((ix*31+iy*17)%7-3) * 2.2; // タイルごとのロット差
+      { // GA1962W シャドウブロック（見本帳: ベージュ×クリームのループパイル＋明るい縦帯）
+        g.fillStyle = `rgb(${196+vary|0},${172+vary|0},${134+vary|0})`;
+        g.fillRect(X,Y,t,t);
+        for(let s=0; s<3+(ix*5+iy)%3; s++){
+          const sx = X + Math.random()*(t-12);
+          g.fillStyle = `rgba(240,231,208,${(0.25+Math.random()*0.3).toFixed(2)})`;
+          g.fillRect(sx, Y, 5+Math.random()*9, t);
+        }
+        const loop = ['rgba(238,227,201,','rgba(180,146,95,','rgba(150,116,70,','rgba(219,203,168,'];
+        for(let n=0;n<430;n++){
+          g.fillStyle = loop[Math.random()*4|0] + (0.35+Math.random()*0.45).toFixed(2) + ')';
+          g.beginPath();
+          g.arc(X+Math.random()*t, Y+Math.random()*t, 0.7+Math.random()*1.3, 0, 7);
+          g.fill();
+        }
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_W, ROOM_D),
+    new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:0.012, roughness:1}));
+  floor.rotation.x = -Math.PI/2;
+  floor.position.set(ROOM_W/2, 0, Z(ROOM_D/2));
+  floor.receiveShadow = true;
+  scene.add(floor);
+})();
+
+// ラウンジのカーペット貼分け（GA1855W サンドII）: 図面の貼分けライン通り 3.50×4.30m の専用メッシュ
+(function makeLoungeCarpet(){
+  const w = LOUNGE.x2-LOUNGE.x1, d = LOUNGE.y2-LOUNGE.y1;
+  const px = 100;
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(w*px); cv.height = Math.round(d*px);
+  const g = cv.getContext('2d');
+  const t = 0.5*px;
+  for(let iy=0; iy<d/0.5; iy++){
+    for(let ix=0; ix<w/0.5; ix++){
+      const X = ix*t, Y = iy*t;
+      const vary = ((ix*31+iy*17)%7-3) * 1.3;
+      const b = 76 + vary;
+      g.fillStyle = `rgb(${b-2|0},${b+1|0},${b+13|0})`;
+      g.fillRect(X,Y,t,t);
+      for(let n=0;n<420;n++){
+        const roll = Math.random();
+        g.fillStyle = roll<0.22
+          ? `rgba(${150+Math.random()*80|0},${165+Math.random()*70|0},${190+Math.random()*55|0},0.5)`
+          : roll<0.55 ? 'rgba(22,25,34,0.5)' : 'rgba(96,103,125,0.6)';
+        g.beginPath();
+        g.arc(X+Math.random()*t, Y+Math.random()*t, 0.7+Math.random()*1.1, 0, 7);
+        g.fill();
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d),
+    new THREE.MeshStandardMaterial({map:tex, bumpMap:tex, bumpScale:0.012, roughness:1}));
+  m.rotation.x = -Math.PI/2;
+  m.position.set((LOUNGE.x1+LOUNGE.x2)/2, 0.005, Z((LOUNGE.y1+LOUNGE.y2)/2));
+  m.receiveShadow = true;
+  scene.add(m);
+})();
+
+/* ================= 壁・窓・柱 ================= */
+const WALL_H = 2.7, WT = 0.12;
+const walls = new THREE.Group(); scene.add(walls);
+function wallSeg(x1,y1,x2,y2,h=WALL_H,m=WALL_M){
+  const len = Math.hypot(x2-x1, y2-y1);
+  const w = box(len, h, WT, m, 0, h/2, 0);
+  w.position.set((x1+x2)/2, h/2, Z((y1+y2)/2));
+  w.rotation.y = Math.atan2(-(Z(y2)-Z(y1)), x2-x1);
+  walls.add(w); return w;
+}
+function doorHeader(x1,y1,x2,y2){ // 出入り口＝開口。上部の垂れ壁だけ残し、下は素通し
+  const len = Math.hypot(x2-x1, y2-y1);
+  const w = box(len, WALL_H-2.1, WT, WALL_M, 0, 0, 0);
+  w.position.set((x1+x2)/2, (WALL_H+2.1)/2, Z((y1+y2)/2));
+  w.rotation.y = Math.atan2(-(Z(y2)-Z(y1)), x2-x1);
+  walls.add(w);
+}
+const GLASS_M = new THREE.MeshStandardMaterial({color:COL.glass, roughness:0.1, metalness:0.1, transparent:true, opacity:0.35});
+function windowRun(x1, x2, y){ // 南面窓（腰H620・ガラス〜2420）
+  const len = x2-x1, cx=(x1+x2)/2;
+  walls.add(box(len, 0.62, WT, WALL_M, cx, 0.31, Z(y)));
+  walls.add(box(len, WALL_H-2.42, WT, WALL_M, cx, (WALL_H+2.42)/2, Z(y)));
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(len, 1.8, 0.04), GLASS_M);
+  glass.position.set(cx, 1.52, Z(y));
+  walls.add(glass);
+  [x1, cx, x2].forEach(x=> walls.add(box(0.06, 1.8, 0.09, mat(COL.mullion,0.6,0.3), x, 1.52, Z(y))));
+}
+function counterWindow(x1,y1,x2,y2){ // 中腰ガラスの腰高窓（腰950/ガラス950..2050/垂れ壁・アルミ枠）
+  const len = Math.hypot(x2-x1, y2-y1), rot = Math.atan2(-(Z(y2)-Z(y1)), x2-x1);
+  const cx = (x1+x2)/2, cz = Z((y1+y2)/2);
+  const alu = mat(0xc6cacd, 0.4, 0.5);
+  const sill = box(len, 0.95, WT, WALL_M, 0,0,0); sill.position.set(cx, 0.475, cz); sill.rotation.y = rot;
+  const head = box(len, WALL_H-2.05, WT, WALL_M, 0,0,0); head.position.set(cx, (WALL_H+2.05)/2, cz); head.rotation.y = rot;
+  const g = new THREE.Mesh(new THREE.BoxGeometry(len, 1.1, 0.05), GLASS_M);
+  g.position.set(cx, 1.5, cz); g.rotation.y = rot;
+  const railT = box(len, 0.06, 0.09, alu, 0,0,0); railT.position.set(cx, 2.03, cz); railT.rotation.y = rot;
+  const railB = box(len, 0.06, 0.09, alu, 0,0,0); railB.position.set(cx, 0.97, cz); railB.rotation.y = rot;
+  walls.add(sill, head, g, railT, railB);
+  [[x1,y1],[x2,y2]].forEach(([px,py])=> walls.add(box(0.07, 1.16, 0.09, alu, px, 1.5, Z(py))));
+  if(len > 1.2){ // 中央方立（2枚建て）
+    const mid = box(0.06, 1.1, 0.09, alu, 0,0,0); mid.position.set(cx, 1.5, cz); mid.rotation.y = rot;
+    walls.add(mid);
+  }
+}
+
+// ===== 南面 y=0: 柱×5＋南東角柱470・窓（腰H620・ガラス2190） =====
+const COLS = [[3.06,4.06],[6.25,7.26],[9.45,10.45],[12.64,13.64],[15.83,16.77],[17.41,17.88]];
+COLS.forEach(([a,b])=> walls.add(box(b-a, WALL_H, 0.9, WALL_M, (a+b)/2, WALL_H/2, Z(0.45))));
+for(let i=0;i<COLS.length-1;i++) windowRun(COLS[i][1], COLS[i+1][0], 0.05);
+
+// ===== 東面 x=17.88（870=出入り口・開口） =====
+wallSeg(17.88,0.9,17.88,5.72);
+doorHeader(17.88,5.72,17.88,6.59);               // 出入り口870
+wallSeg(17.88,6.59,17.88,8.9);
+// 北東ブロック（PS・柱）
+walls.add(box(17.66-16.05, WALL_H, 8.9-7.91, WALL_M, (16.05+17.66)/2, WALL_H/2, Z((7.91+8.9)/2)));
+// 北東の壁 y=8.9（770=出入り口・開口）と前室側壁
+wallSeg(14.726,8.9,15.28,8.9);
+doorHeader(15.28,8.9,16.05,8.9);                 // 出入り口770
+wallSeg(16.05,8.9,17.88,8.9);
+wallSeg(14.726,8.9,14.726,9.566);
+
+// ===== 玄関側の廊下壁 y=9.566（青=腰高窓1800 / 出入り口は東寄り） =====
+wallSeg(9.915,9.566,10.526,9.566);
+counterWindow(10.526,9.566,12.326,9.566);        // 腰高窓 1800（青）
+wallSeg(12.326,9.566,13.386,9.566);
+doorHeader(13.386,9.566,14.666,9.566);           // 出入り口（廊下側から）
+wallSeg(14.666,9.566,14.726,9.566);
+
+// ===== ラウンジ右壁 x=9.915 y9.566..12.42（オープンシェルフ上部にコルク掲示板） =====
+wallSeg(9.915,9.566,9.915,12.42);
+walls.add(box(0.035, 0.91, 1.81, mat(COL.cork,0.95), 9.845, 1.75, Z(10.4))); // 馬印 KBC36C
+
+// ===== 北面 y=12.42 =====
+wallSeg(0,12.42,9.915,12.42);
+
+// ===== 西面 x=0（赤丸: 北端に中腰ガラス窓口930） =====
+counterWindow(0,11.48,0,12.42);                  // 窓口930
+wallSeg(0,8.216,0,11.48);
+
+// ===== 左上ゾーン南壁 y=8.216 と 間仕切り壁 x=3.614（赤丸: 上端に窓口955） =====
+wallSeg(0,8.216,3.614,8.216);
+counterWindow(3.614,7.07,3.614,8.03);            // 窓口955（棚の右＝北端）
+wallSeg(3.614,0.9,3.614,7.07);
+wallSeg(3.614,8.03,3.614,8.216);
+// 消火器（ラウンジ南東角）
+walls.add(cyl(0.09, 0.6, mat(0xc02020, 0.5), 9.7, 0.3, Z(8.35), 12));
+
+/* ================= 家具ビルダー ================= */
+function trapezoidTop(){ // DT-15R-DR 台形天板 W1500(長辺)/750(短辺)×D750
+  const s = new THREE.Shape();
+  s.moveTo(-0.75, 0); s.lineTo(0.75, 0); s.lineTo(0.375, 0.75); s.lineTo(-0.375, 0.75); s.closePath();
+  const geo = new THREE.ExtrudeGeometry(s, {depth:0.03, bevelEnabled:false});
+  geo.rotateX(-Math.PI/2);
+  const m = new THREE.Mesh(geo, woodMat(TEX.melamine, 0.4));
+  m.castShadow = m.receiveShadow = true;
+  return m;
+}
+function trapTable(){ // DT-15R-DR 台形テーブル単体 W1500×D750 H700（2台合わせて六角形）
+  const gp = new THREE.Group();
+  const top = trapezoidTop();
+  top.position.set(0, 0.7, 0.375); // 中心合わせ（長辺= -側/手前）
+  gp.add(top);
+  const lm = mat(COL.silver, 0.32, 0.75);
+  [[-0.6,0.28],[0.6,0.28],[-0.28,-0.28],[0.28,-0.28]].forEach(([x,z])=>{
+    gp.add(cyl(0.025, 0.68, lm, x, 0.34, z));
+  });
+  return gp;
+}
+function navChair(fab){ // Navette NVT-C-SC W525×D550×H815 SH455 白フレーム×白背シェル×座パッドのみFPT色
+  const gp = new THREE.Group();
+  const white = mat(COL.duneWhite, 0.4);
+  gp.add(box(0.47, 0.05, 0.44, fabMat(fab), 0, 0.455, 0.01));       // 座パッド（色付きはここだけ）
+  const back = box(0.44, 0.42, 0.024, white, 0, 0.63, -0.215);      // 背シェル 白（パンチング）
+  back.rotation.x = 0.10;
+  gp.add(back);
+  const legM = mat(COL.duneWhite, 0.45);
+  [-0.2, 0.2].forEach(x=>{
+    const fl = cyl(0.014, 0.47, legM, x, 0.24, 0.17); fl.rotation.x = -0.2; gp.add(fl);   // 前脚
+    const rl = cyl(0.014, 0.52, legM, x, 0.24, -0.15); rl.rotation.x = 0.42; gp.add(rl);  // 後脚（湾曲近似）
+    const sp = cyl(0.014, 0.3, legM, x, 0.52, -0.2); sp.rotation.x = 0.12; gp.add(sp);    // 背支柱
+  });
+  [[-0.2,0.22],[0.2,0.22],[-0.23,-0.26],[0.23,-0.26]].forEach(([x,z])=>{
+    gp.add(cyl(0.03, 0.035, mat(0x3a3a3e, 0.5), x, 0.032, z, 12)); // キャスター×4
+  });
+  return gp;
+}
+function geneChair(){ // Gene-SN W505×D570 H785 SH445 黒脚×座パッドFTW19・背上部に手掛けスリット
+  const gp = new THREE.Group();
+  const shell = mat(0x3a3a40, 0.55);
+  gp.add(box(0.47, 0.03, 0.45, shell, 0, 0.43, 0));                 // 座基材（スリット入り）
+  gp.add(box(0.45, 0.035, 0.43, fabMat(COL.FTW19), 0, 0.462, 0));   // 座パッド FTW19
+  const back = box(0.46, 0.26, 0.03, shell, 0, 0.575, -0.222);      // 背メイン（背表は張地）
+  back.rotation.x = 0.14;
+  const rail = box(0.46, 0.06, 0.03, shell, 0, 0.765, -0.249);      // 手掛けの横バー
+  rail.rotation.x = 0.14;
+  gp.add(back, rail);
+  [-0.215, 0.215].forEach(x=>{ // 横バーと背をつなぐ両端（間がスリット開口）
+    const st = box(0.03, 0.13, 0.03, shell, x, 0.7, -0.24);
+    st.rotation.x = 0.14;
+    gp.add(st);
+  });
+  const legM = mat(0x2a2a2e, 0.45, 0.35);
+  [[-0.2,-0.2],[0.2,-0.2],[-0.2,0.2],[0.2,0.2]].forEach(([x,z])=>{
+    const l = cyl(0.012, 0.44, legM, x*1.05, 0.22, z*1.05);
+    l.rotation.z = x>0 ? -0.06 : 0.06;
+    gp.add(l);
+  });
+  return gp;
+}
+function existChair(color){ // 既存チェア（写真1: 白脚×成形合板風・半光沢）
+  const gp = new THREE.Group();
+  const bodyM = mat(color, 0.5);
+  gp.add(box(0.44, 0.025, 0.42, bodyM, 0, 0.44, 0));
+  const back = box(0.44, 0.5, 0.02, bodyM, 0, 0.72, -0.2);
+  back.rotation.x = 0.1; gp.add(back);
+  const legM = mat(COL.whiteLeg, 0.5);
+  [[-0.19,-0.18],[0.19,-0.18],[-0.19,0.19],[0.19,0.19]].forEach(([x,z])=>{
+    gp.add(cyl(0.012, 0.44, legM, x, 0.22, z));
+  });
+  return gp;
+}
+function groupTable(){ // 既存 会議テーブル 1200×1400（ビーチ天板・配線ボックス・黒円柱脚）
+  const gp = new THREE.Group();
+  gp.add(box(1.2, 0.035, 1.4, woodMat(TEX.beech, 0.5), 0, 0.7, 0));
+  gp.add(box(0.5, 0.014, 0.16, mat(0x1c1d20, 0.4), 0, 0.725, 0)); // 配線ボックス
+  const legM = mat(0x44464c, 0.5, 0.3);
+  [[-0.52,-0.62],[0.52,-0.62],[-0.52,0.62],[0.52,0.62]].forEach(([x,z])=>{
+    gp.add(cyl(0.032, 0.7, legM, x, 0.35, z));
+  });
+  return gp;
+}
+function dtn90(){ // DTN-9090 W900×D900 H700 天板LW02×脚BK
+  const gp = new THREE.Group();
+  gp.add(box(0.9, 0.03, 0.9, woodMat(TEX.lw02, 0.5), 0, 0.7, 0));
+  const legM = mat(COL.chairBlack, 0.5, 0.2);
+  [[-0.4,-0.4],[0.4,-0.4],[-0.4,0.4],[0.4,0.4]].forEach(([x,z])=>{
+    gp.add(cyl(0.022, 0.68, legM, x, 0.34, z));
+    gp.add(box(0.05, 0.02, 0.05, legM, x, 0.66, z)); // フック意匠
+  });
+  return gp;
+}
+function plwbc(){ // PL-WBC ホワイトボード衝立 W950×D560×H1840
+  const gp = new THREE.Group();
+  const fm = mat(COL.frameGray, 0.5, 0.3);
+  [-0.45, 0.45].forEach(x=>{
+    gp.add(cyl(0.02, 1.8, fm, x, 0.9, 0));
+    gp.add(box(0.05, 0.05, 0.56, fm, x, 0.03, 0));
+    gp.add(cyl(0.025, 0.025, mat(0x444,0.5), x, 0.02, 0.24, 10));
+    gp.add(cyl(0.025, 0.025, mat(0x444,0.5), x, 0.02, -0.24, 10));
+  });
+  const bd = box(0.88, 1.15, 0.03, mat(COL.boardWhite, 0.22, 0.05), 0, 1.12, 0);
+  gp.add(bd);
+  gp.add(box(0.88, 0.04, 0.09, fm, 0, 0.52, 0.05)); // トレー
+  return gp;
+}
+function roundBench(dia, h, color){ // JELL-MARU 円形ベンチ（布地張・樹脂アジャスター）
+  const gp = new THREE.Group();
+  const body = cyl(dia/2, h-0.06, fabMat(color), 0, 0.06+(h-0.06)/2, 0, 36);
+  body.userData.fabric = true;
+  gp.add(body);
+  const n = dia>0.6 ? 5 : 4;
+  for(let i=0;i<n;i++){
+    const a = i/n*Math.PI*2;
+    gp.add(cyl(0.022, 0.06, mat(0x2c2c2e,0.6), Math.cos(a)*(dia/2-0.07), 0.03, Math.sin(a)*(dia/2-0.07), 10));
+  }
+  return gp;
+}
+function moonBench(color){ // JELL-MARU-900MK（ムーンカット）ø900×H400
+  const gp = new THREE.Group();
+  const s = new THREE.Shape();
+  s.absarc(0, 0, 0.45, 0.681, Math.PI*2-0.681, false);
+  s.absarc(0.45, 0, 0.30, -1.911, 1.911, true);
+  const geo = new THREE.ExtrudeGeometry(s, {depth:0.34, bevelEnabled:false});
+  geo.rotateX(-Math.PI/2);
+  const body = new THREE.Mesh(geo, fabMat(color));
+  body.position.y = 0.06; body.castShadow = body.receiveShadow = true;
+  body.userData.fabric = true;
+  gp.add(body);
+  [[0,0.38],[0.33,-0.19],[-0.33,-0.19],[-0.33,0.19]].forEach(([x,z])=>{
+    gp.add(cyl(0.022, 0.06, mat(0x2c2c2e,0.6), x, 0.03, z, 10));
+  });
+  return gp;
+}
+function mijika(){ // NAIKI mijika MJ-0911N-BB+CW-900TPU+CW-900B-B W899×D450×H1120 黒×天板CA
+  const gp = new THREE.Group();
+  const bk = mat(0x2b2c2f, 0.7, 0.15);
+  // ベース（CW-900B-B 枠型）
+  [[0,-0.19],[0,0.19]].forEach(([x,z])=> gp.add(box(0.84, 0.06, 0.05, bk, x, 0.03, z)));
+  [[-0.4,0],[0.4,0]].forEach(([x,z])=> gp.add(box(0.05, 0.06, 0.4, bk, x, 0.03, z)));
+  // 本体（MJ-0911N-BB 黒スチール・両面オープン）
+  [-0.43, 0.43].forEach(x=> gp.add(box(0.028, 0.95, 0.43, bk, x, 0.585, 0)));
+  [0.14, 0.55, 0.96].forEach(y=> gp.add(box(0.84, 0.022, 0.41, bk, 0, y, 0)));
+  gp.add(box(0.84, 0.28, 0.02, bk, 0, 0.82, 0)); // 中仕切りパネル
+  // 天板（CW-900TPU ショコラアッシュ）
+  gp.add(box(0.92, 0.035, 0.47, woodMat(TEX.ca, 0.55), 0, 1.10, 0));
+  return gp;
+}
+function bookshelfRun(len, h=2.36, d=0.3, tiers=5){ // 既存壁面書架（木口×白棚）
+  const gp = new THREE.Group();
+  const wood = woodMat(TEX.shelf, 0.7), white = mat(COL.shelfWhite, 0.85);
+  const bays = Math.max(1, Math.round(len/0.9));
+  for(let i=0;i<=bays;i++) gp.add(box(0.028, h, d, wood, -len/2 + i*(len/bays), h/2, 0));
+  gp.add(box(len, 0.035, d+0.02, wood, 0, h+0.017, 0));
+  gp.add(box(len, h, 0.02, white, 0, h/2, -d/2+0.01));
+  for(let t2=0;t2<tiers;t2++){
+    const sy = 0.12 + t2*(h-0.25)/(tiers-1);
+    gp.add(box(len-0.05, 0.02, d-0.05, white, 0, sy, 0.01));
+    for(let b=0;b<bays;b++){ // ブックエンド仕切り板（写真の白仕切り）
+      if((b*7 + t2*3) % 2 === 0){
+        const dx = -len/2 + (b + 0.35 + ((b+t2)%3)*0.22) * (len/bays);
+        gp.add(box(0.014, 0.17, d-0.09, white, dx, sy+0.095, 0.02));
+      }
+    }
+  }
+  return gp;
+}
+function existBench(){ // 既存ベンチ（写真: 赤レザー3連×シルバー脚）1350×450 SH450
+  const gp = new THREE.Group();
+  const leather = mat(0xb02a35, 0.38);
+  for(let i=0;i<3;i++) gp.add(box(0.44, 0.385, 0.45, leather, -0.45+i*0.45, 0.2575, 0));
+  const legM = mat(0xbfc3c7, 0.3, 0.7);
+  [[-0.6,-0.17],[0,-0.17],[0.6,-0.17],[-0.6,0.17],[0,0.17],[0.6,0.17]].forEach(([x,z])=>{
+    gp.add(cyl(0.018, 0.065, legM, x, 0.033, z, 12));
+  });
+  return gp;
+}
+function existStool(){ // 既存スツール（写真: 黒レザーキューブ×シルバー脚）450角 SH450
+  const gp = new THREE.Group();
+  gp.add(box(0.45, 0.385, 0.45, mat(0x232326, 0.42), 0, 0.2575, 0));
+  const legM = mat(0xbfc3c7, 0.3, 0.7);
+  [[-0.17,-0.17],[0.17,-0.17],[-0.17,0.17],[0.17,0.17]].forEach(([x,z])=>{
+    gp.add(cyl(0.018, 0.065, legM, x, 0.033, z, 12));
+  });
+  return gp;
+}
+function monitorStand(){ // 既存 モニタースタンド（ダークグレー台座）
+  const gp = new THREE.Group();
+  gp.add(box(1.1, 0.06, 0.55, mat(0x3a3d42, 0.6), 0, 0.03, 0));
+  gp.add(cyl(0.04, 1.1, mat(COL.steelDark, 0.5), 0, 0.6, 0));
+  const scr = box(1.25, 0.72, 0.05, mat(0x1a1c20, 0.3), 0, 1.5, 0);
+  gp.add(scr);
+  return gp;
+}
+function humanFigure(){ // スケール確認用の人（身長約170cm）
+  const gp = new THREE.Group();
+  const cloth = mat(0x4a6b8a, 0.85), skin = mat(0xd9b38f, 0.7), pants = mat(0x3a3f4a, 0.85);
+  [-0.09, 0.09].forEach(x=> gp.add(cyl(0.055, 0.8, pants, x, 0.4, 0, 12)));
+  const torso = cyl(0.16, 0.62, cloth, 0, 1.11, 0, 14); gp.add(torso);
+  [-0.21, 0.21].forEach(x=>{ const a = cyl(0.045, 0.55, cloth, x, 1.12, 0, 10); a.rotation.z = x>0?-0.08:0.08; gp.add(a); });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 12), skin);
+  head.position.y = 1.56; head.castShadow = true; gp.add(head);
+  return gp;
+}
+
+/* ================= 配置 ================= */
+const movables = [];
+let idSeq = 0;
+const CATALOG = {}; // name -> {count, color, note}
+function place(builder, name, note, chipColor, x, y, rotDeg, kind){
+  const gp = builder();
+  gp.position.set(x, 0, Z(y));
+  gp.rotation.y = THREE.MathUtils.degToRad(rotDeg);
+  gp.userData = {id:'f'+(idSeq++), name, note, kind, home:{x, y, rot:rotDeg}};
+  gp.traverse(o=>{ if(o.isMesh){ o.castShadow=true; } });
+  scene.add(gp); movables.push(gp);
+  const key = name;
+  if(!CATALOG[key]) CATALOG[key] = {count:0, color:chipColor, note, kind};
+  CATALOG[key].count++;
+  return gp;
+}
+const FABS = [COL.FPT21, COL.FPT71, COL.FPT48];
+const FABNAME = {[COL.FPT21]:'マスタード FPT21', [COL.FPT71]:'グラスグリーン FPT71', [COL.FPT48]:'インディゴ FPT48'};
+
+// --- 小人数ワーキング: DT-15R六角×5 + Navette×6/卓（計30脚）［図面採寸］ ---
+const hexes = [ [10.5,6.5,90], [13.5,6.6,90], [9.35,3.4,60], [11.75,3.3,120], [15.0,3.5,90] ];
+hexes.forEach(([hx,hy,rot], gi)=>{
+  const hr = THREE.MathUtils.degToRad(rot);
+  [1,-1].forEach(s=>{ // 台形2台を突き合わせて六角形（各台は単独で移動・回転可）
+    place(trapTable, 'DT-15R-DR 台形テーブル', 'W1500×D750 H700 天板WH10（2台で六角形・分割可）', '#f5f5f1',
+      hx - Math.sin(hr)*0.375*s, hy + Math.cos(hr)*0.375*s, rot + (s>0?0:180), 'new');
+  });
+  for(let i=0;i<6;i++){
+    const a = THREE.MathUtils.degToRad(rot + 30 + i*60);
+    const cx = hx + Math.cos(a)*1.05, cy = hy + Math.sin(a)*1.05;
+    const fab = FABS[(gi*6+i) % 3];
+    const ch = place(()=>navChair(fab), 'Navette NVT-C-SC（キャスター付）', 'W525×D550×H815 SH455 白×'+FABNAME[fab], '#'+fab.toString(16).padStart(6,'0'), cx, cy, 0, 'new');
+    ch.rotation.y = Math.atan2(-Math.cos(a), Math.sin(a)); // テーブル向き
+    ch.userData.home.rot = THREE.MathUtils.radToDeg(ch.rotation.y);
+  }
+});
+CATALOG['Navette NVT-C-SC（キャスター付）'].note = 'W525×D550×H815 SH455 白×座パッドFPT21/71/48 各10脚';
+// ホワイトボード衝立 PL-WBC ×5［図面採寸］
+[[7.5,6.9,55],[4.85,4.5,-35],[10.4,4.9,-30],[12.5,5.4,30],[16.6,3.5,90]].forEach(([x,y,r])=>{
+  place(plwbc, 'PL-WBC ホワイトボード衝立', 'W950×D560×H1840', '#fafafa', x, y, r, 'new');
+});
+
+// --- 左上: DTN-9090 ×3（斜め45°のジグザグ配置）+ Gene-SN ---
+const dtns = [ [1.48,9.6,45], [3.54,10.83,45], [5.61,9.6,45] ];
+dtns.forEach(([tx,ty,rot])=>{
+  place(dtn90, 'DTN-9090 テーブル', 'W900×D900 H700 LW02×黒脚', '#d9bd93', tx, ty, rot, 'new');
+  for(let i=0;i<4;i++){
+    const a = THREE.MathUtils.degToRad(rot + i*90);
+    const cx = tx + Math.cos(a)*0.78, cy = ty + Math.sin(a)*0.78;
+    if(!inRoom(cx,cy) || cy > ROOM_D-0.45) continue;
+    const ch = place(geneChair, 'Gene-SN チェア', 'W505×D570 SH445 黒×FTW19', '#2e2e33', cx, cy, 0, 'new');
+    ch.rotation.y = Math.atan2(-Math.cos(a), Math.sin(a));
+    ch.userData.home.rot = THREE.MathUtils.radToDeg(ch.rotation.y);
+  }
+});
+
+// --- ラウンジ（JELL-MARU: 張地カラーは選択→パレットで変更可） ---
+const b1 = place(()=>roundBench(0.9, 0.40, 0xdfa32b), 'JELL-MARU-900 ベンチ', 'ø900×H400 布地張（提案: FAT11 サフランイエロー）', '#dfa32b', 7.15, 11.07, 0, 'new');
+const b2 = place(()=>roundBench(0.9, 0.40, 0x2e6b46), 'JELL-MARU-900 ベンチ', 'ø900×H400 布地張（提案: FAT31 メドウグリーン）', '#2e6b46', 7.3, 9.7, 0, 'new');
+const b3 = place(()=>moonBench(0x2f6ea5), 'JELL-MARU-900MK ベンチ', 'ø900×H400 ムーンカット（提案: FAT25 ゼニスブルー）', '#2f6ea5', 7.95, 9.25, 160, 'new');
+const b4 = place(()=>roundBench(0.45, 0.40, 0x9aa88f), 'JELL-MARU-450 ベンチ', 'ø450×H400（提案: FTW14 セージ）', '#9aa88f', 8.48, 11.42, 0, 'new');
+const b5 = place(()=>roundBench(0.45, 0.40, 0xc2a98f), 'JELL-MARU-450 ベンチ', 'ø450×H400（提案: FTW24 アーモンド）', '#c2a98f', 8.34, 10.6, 0, 'new');
+[b1,b2,b3,b4,b5].forEach(b=> b.userData.recolorable = true);
+// mijika オープンシェルフ（ラウンジ右壁沿い・図面は4台 ※Excelは3セット→要確認）
+[11.51, 10.61, 9.71, 8.81].forEach(y=>{
+  place(mijika, 'mijika オープンシェルフ', 'MJ-0911N-BB+CW-900TPU+CW-900B-B W899×D450×H1120 黒×天板CA（ナイキ）', '#5c4334', 9.69, y, 90, 'new');
+});
+// コルク掲示板 馬印 KBC36C（ラウンジ東壁・壁付け）
+CATALOG['コルク掲示板 KBC36C'] = {count:1, color:'#b9744a', note:'W1810×H910 天然コルク2mm/アルミ枠（馬印）', kind:'new'};
+
+// --- グループワーキング（既存） ---
+const islands = [ [6.54,6.22,-35], [5.57,3.97,-35] ];
+let wineLeft = 5, blackLeft = 5;
+islands.forEach(([ix,iy,rot], ii)=>{
+  const r = THREE.MathUtils.degToRad(rot);
+  [-1,1].forEach(s=>{ // 1200×1400 を長辺方向に2台連結（=島 2400×1400）
+    const tx = ix + Math.cos(r)*0.6*s, ty = iy + Math.sin(r)*0.6*s;
+    place(groupTable, '既存 会議テーブル', 'W1200×D1400 H700 ビーチ天板・配線ボックス付', '#d4b183', tx, ty, rot, 'old');
+  });
+  const seats = ii===0 ? 6 : 4;
+  for(let i=0;i<seats;i++){
+    const side = i%2 ? 1 : -1;
+    const along = (Math.floor(i/2) - (seats/2-1)/2) * 0.75;
+    const cx = ix + Math.cos(r)*along - Math.sin(r)*0.95*side;
+    const cy = iy + Math.sin(r)*along + Math.cos(r)*0.95*side;
+    const useWine = (wineLeft>0 && (i%2===0 || blackLeft===0));
+    const colr = useWine ? COL.wine : COL.chairBlack;
+    if(useWine) wineLeft--; else blackLeft--;
+    const ch = place(()=>existChair(colr), useWine?'既存チェア（ワインレッド）':'既存チェア（ブラック）', 'W440 白脚', useWine?'#8e3e4b':'#35343a', cx, cy, rot + (side>0?0:180), 'old');
+  }
+});
+
+// --- 既存書架（壁面・図面採寸） ---
+[ place(()=>bookshelfRun(9.08), '既存 壁面書架（北面）', 'W9080×D300×H2360（壁付き・固定）', '#d6b183', 5.38, 12.27, 0, 'old'),
+  place(()=>bookshelfRun(2.67), '既存 壁面書架（西面）', 'W2670×D300×H2360（壁付き・固定）', '#d6b183', 0.15, 9.7, 90, 'old'),
+  place(()=>bookshelfRun(5.475), '既存 壁面書架（間仕切り側）', 'W5475×D300×H2360 ※北端に窓口955（壁付き・固定）', '#d6b183', 3.764, 4.365, 90, 'old')
+].forEach(s=> s.userData.locked = true);
+
+// --- 窓際の既存ベンチ・スツール・モニター（図面採寸） ---
+place(existBench, '既存 ベンチ（赤レザー）', 'W1350×D450 SH450 3連クッション', '#b02a35', 8.36, 0.75, 0, 'old');
+place(existStool, '既存 スツール（黒レザー）', 'W450×D450 SH450', '#232326', 10.65, 0.7, 0, 'old');
+place(existStool, '既存 スツール（黒レザー）', 'W450×D450 SH450', '#232326', 11.15, 0.7, 0, 'old');
+place(monitorStand, 'モニタースタンド', 'キャスター付・55型', '#3a3d42', 5.3, 0.95, 0, 'old');
+// サンプル人物（凡例には出さない）
+place(humanFigure, '人（サンプル・身長170cm）', 'スケール確認用。ドラッグで移動できます', '#4a6b8a', 13.3, 4.9, -30, 'old');
+delete CATALOG['人（サンプル・身長170cm）'];
+
+/* ================= サイドバー凡例 ================= */
+function renderLegend(){
+  const ln = document.getElementById('legendNew'), lo = document.getElementById('legendOld');
+  ln.innerHTML = ''; lo.innerHTML = '';
+  Object.entries(CATALOG).forEach(([name, info])=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="chip" style="background:${info.color}"></span><span>${name} ×${info.count}<small>${info.note}</small></span>`;
+    (info.kind==='new'?ln:lo).appendChild(li);
+  });
+}
+renderLegend();
+
+/* ================= ベンチ張地パレット（AICHI FAT/FTW） ================= */
+const PALETTE = [
+  ['FAT01 ホワイト','#ecebe5'], ['FAT05 シャンパン','#cbbba8'], ['FAT04 ブラック','#2e2c2c'],
+  ['FAT11 サフランイエロー','#dfa32b'], ['FAT30 アシッドグリーン','#a8a12f'], ['FAT14 オレンジ','#d96c26'],
+  ['FAT16 カーマイン','#b02534'], ['FAT31 メドウグリーン','#2e6b46'], ['FAT24 アクアグリーン','#3e8f8a'],
+  ['FAT25 ゼニスブルー','#2f6ea5'], ['FAT27 バリブルー','#274a77'],
+  ['FTW09 ライム','#b9b944'], ['FTW10 モスグリーン','#5a6b4a'], ['FTW13 パウダーブルー','#8fb0c2'],
+  ['FTW14 セージ','#9aa88f'], ['FTW17 ライトグレー','#b9bcbc'], ['FTW23 セピア','#6b4f3f'],
+  ['FTW24 アーモンド','#c2a98f'], ['FTW02 バーガンディ','#6e2f3a'], ['FTW16 ナイトブルー','#2c3550'],
+];
+function applyFabric(gp, hex){
+  gp.traverse(o=>{ if(o.isMesh && o.userData.fabric) o.material.color.set(hex); });
+}
+(function buildPalette(){
+  const pal = document.getElementById('palette');
+  PALETTE.forEach(([nm, hex])=>{
+    const b = document.createElement('button');
+    b.style.background = hex; b.title = nm;
+    b.onclick = ()=>{
+      if(selected && selected.userData.recolorable){
+        applyFabric(selected, hex);
+        selected.userData.fabricName = nm;
+        document.getElementById('selInfo').innerHTML = `<b>${selected.userData.name}</b><br>${selected.userData.note}<br>→ 張地: ${nm}`;
+      } else {
+        toast('JELLYベンチを選択してから色を選んでください');
+      }
+    };
+    pal.appendChild(b);
+  });
+})();
+
+/* ================= 操作（選択・移動・回転） ================= */
+const ray = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const floorPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+let selected = null, dragging = false, dragOffset = new THREE.Vector3();
+
+function setEmissive(gp, on){
+  gp.traverse(o=>{ if(o.isMesh && o.material && o.material.emissive){ o.material.emissive.setHex(on?0x22aa88:0x000000); o.material.emissiveIntensity = on?0.35:0; } });
+}
+function select(gp){
+  if(selected) setEmissive(selected, false);
+  selected = gp;
+  const info = document.getElementById('selInfo');
+  if(gp){ setEmissive(gp, true); info.innerHTML = `<b>${gp.userData.name}</b><br>${gp.userData.note}`; }
+  else info.innerHTML = '家具をクリックで選択、ドラッグで移動。<br>Q / E キーで回転できます。';
+}
+function pick(ev){
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((ev.clientX-r.left)/r.width)*2-1;
+  mouse.y = -((ev.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(mouse, camera);
+  const hits = ray.intersectObjects(movables, true);
+  if(!hits.length) return null;
+  let o = hits[0].object;
+  while(o.parent && !o.userData.id) o = o.parent;
+  return o.userData.id ? o : null;
+}
+renderer.domElement.addEventListener('pointerdown', ev=>{
+  if(ev.button!==0) return;
+  const hit = pick(ev);
+  select(hit);
+  if(hit && !hit.userData.locked){
+    dragging = true; controls.enabled = false;
+    const pt = new THREE.Vector3();
+    ray.ray.intersectPlane(floorPlane, pt);
+    dragOffset.copy(hit.position).sub(pt);
+  }
+});
+renderer.domElement.addEventListener('pointermove', ev=>{
+  if(!dragging || !selected) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((ev.clientX-r.left)/r.width)*2-1;
+  mouse.y = -((ev.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(mouse, camera);
+  const pt = new THREE.Vector3();
+  if(ray.ray.intersectPlane(floorPlane, pt)){
+    const nx = THREE.MathUtils.clamp(pt.x + dragOffset.x, 0.2, ROOM_W-0.2);
+    const nz = THREE.MathUtils.clamp(pt.z + dragOffset.z, Z(ROOM_D)+0.2, -0.2);
+    selected.position.set(nx, 0, nz);
+  }
+});
+window.addEventListener('pointerup', ()=>{ dragging = false; controls.enabled = true; });
+window.addEventListener('keydown', ev=>{
+  if(!selected) return;
+  if(ev.key==='q'||ev.key==='Q') selected.rotation.y += THREE.MathUtils.degToRad(15);
+  if(ev.key==='e'||ev.key==='E') selected.rotation.y -= THREE.MathUtils.degToRad(15);
+});
+document.getElementById('btnRotL').onclick = ()=>{ if(selected) selected.rotation.y += THREE.MathUtils.degToRad(15); };
+document.getElementById('btnRotR').onclick = ()=>{ if(selected) selected.rotation.y -= THREE.MathUtils.degToRad(15); };
+
+/* ================= 表示切替・保存 ================= */
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.opacity = 1;
+  setTimeout(()=>{ t.style.opacity = 0; }, 1800);
+}
+document.getElementById('btnPanel').onclick = ()=>{
+  document.getElementById('sidebar').classList.toggle('hidden');
+  resize();
+};
+let dragPan = false; // ドラッグ（スワイプ）を回転⇔移動で切替
+document.getElementById('btnDragMode').onclick = ev=>{
+  dragPan = !dragPan;
+  controls.mouseButtons.LEFT = dragPan ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+  controls.touches.ONE = dragPan ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+  ev.target.textContent = dragPan ? 'ドラッグ: 上下左右移動' : 'ドラッグ: 視点回転';
+  ev.target.classList.toggle('active', dragPan);
+  toast(dragPan ? 'ドラッグ/スワイプで視点が上下左右に動きます' : 'ドラッグ/スワイプで視点が回転します');
+};
+document.getElementById('chkNew').onchange = e=> movables.forEach(m=>{ if(m.userData.kind==='new') m.visible = e.target.checked; });
+document.getElementById('chkOld').onchange = e=> movables.forEach(m=>{ if(m.userData.kind==='old') m.visible = e.target.checked; });
+function setViewBtn(id){
+  ['btnTop','btn3d','btnWalk'].forEach(b=> document.getElementById(b).classList.toggle('active', b===id));
+}
+document.getElementById('btnTop').onclick = ()=>{ viewTop(); setViewBtn('btnTop'); };
+document.getElementById('btn3d').onclick = ()=>{ view3d(); setViewBtn('btn3d'); };
+document.getElementById('btnWalk').onclick = ()=>{ viewWalk(); setViewBtn('btnWalk'); };
+
+const LS_KEY = 't1402-layout-v5';
+// 共有保存（Supabase REST・誰でも読み書き可のレイアウト共有テーブル）
+// ★セットアップ（README.md参照）:
+//  1. Supabaseダッシュボード → SQL Editor で setup.sql を実行
+//  2. Settings → API の「Project URL」と「publishable (anon) key」を下に貼る
+//     url: 'https://＜プロジェクトref＞.supabase.co/rest/v1/t1402_layout'
+const SYNC = {
+  url: '',   // ← 例: 'https://abcdefgh.supabase.co/rest/v1/t1402_layout'
+  key: '',   // ← 例: 'sb_publishable_...'
+  headers(){ return {apikey:this.key, Authorization:'Bearer '+this.key, 'Content-Type':'application/json'}; }
+};
+function collectLayout(){
+  const items = {};
+  movables.forEach(m=>{
+    const rec = {x:m.position.x, z:m.position.z, ry:m.rotation.y};
+    if(m.userData.recolorable){
+      m.traverse(o=>{ if(o.isMesh && o.userData.fabric && !rec.col) rec.col = '#'+o.material.color.getHexString(); });
+    }
+    items[m.userData.id] = rec;
+  });
+  return {v:'v3', items};
+}
+function applyLayout(payload){
+  if(!payload || payload.v!=='v3' || !payload.items) return false;
+  movables.forEach(m=>{
+    const d = payload.items[m.userData.id];
+    if(d){
+      m.position.set(d.x, 0, d.z); m.rotation.y = d.ry;
+      if(d.col && m.userData.recolorable) applyFabric(m, d.col);
+    }
+  });
+  return true;
+}
+document.getElementById('btnSave').onclick = async ()=>{
+  const payload = collectLayout();
+  localStorage.setItem(LS_KEY, JSON.stringify(payload));
+  if(!SYNC.url){ toast('この端末に保存しました（共有ストレージ未設定）'); return; }
+  try{
+    const res = await fetch(SYNC.url, {
+      method:'POST',
+      headers:{...SYNC.headers(), Prefer:'resolution=merge-duplicates'},
+      body: JSON.stringify({id:1, data:payload, updated_at:new Date().toISOString()})
+    });
+    toast(res.ok ? '保存しました（全端末に共有✓）' : '共有保存に失敗（この端末には保存済み）');
+  }catch(e){
+    toast('オフライン？ この端末にのみ保存しました');
+  }
+};
+document.getElementById('btnReset').onclick = ()=>{
+  localStorage.removeItem(LS_KEY);
+  movables.forEach(m=>{
+    const h = m.userData.home;
+    m.position.set(h.x, 0, Z(h.y));
+    m.rotation.y = THREE.MathUtils.degToRad(h.rot);
+  });
+  toast('初期配置に戻しました（共有へは「配置を保存」で反映）');
+};
+(async function restore(){
+  try{ // 1) 共有レイアウト優先
+    if(!SYNC.url) throw 0;
+    const res = await fetch(SYNC.url+'?id=eq.1&select=data', {headers:SYNC.headers()});
+    if(res.ok){
+      const rows = await res.json();
+      if(rows.length && applyLayout(rows[0].data)) return;
+    }
+  }catch(e){}
+  try{ // 2) この端末の保存
+    applyLayout(JSON.parse(localStorage.getItem(LS_KEY) || 'null'));
+  }catch(e){}
+})();
+
+/* ================= ループ ================= */
+function resize(){
+  const w = viewport.clientWidth, h = viewport.clientHeight;
+  camera.aspect = w/h; camera.updateProjectionMatrix();
+  renderer.setSize(w, h);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+}
+window.addEventListener('resize', resize);
+resize();
+renderer.setAnimationLoop(()=>{
+  controls.update();
+  // 照明（影）を視点に追従させる: カメラの回転に合わせて太陽の方位も回す
+  const az = controls.getAzimuthalAngle();
+  sun.position.set(controls.target.x + Math.sin(az+0.7)*9, 13, controls.target.z + Math.cos(az+0.7)*9);
+  sun.target.position.set(controls.target.x, 0, controls.target.z);
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

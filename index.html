@@ -19,7 +19,12 @@
     background: #3d5570; color: #fff; font-size: 12px; cursor: pointer; user-select: none;
   }
   header button:hover, header label.tgl:hover { background: #4a6585; }
+  header select {
+    padding: 5px 8px; border: 1px solid #56708a; border-radius: 4px;
+    background: #3d5570; color: #fff; font-size: 12px; cursor: pointer;
+  }
   header button.active { background: #1abc9c; border-color: #1abc9c; }
+  header button.lockon { background: #b03a3a; border-color: #b03a3a; }
   header label.tgl input { margin-right: 4px; vertical-align: -1px; }
   #main { display: flex; flex: 1; min-height: 0; }
   #sidebar {
@@ -60,13 +65,23 @@
 <header>
   <h1>T1402 共創拠点 3Dレイアウト（タワー75・14F）</h1>
   <span class="spacer"></span>
-  <button id="btnPanel">☰ パネル</button>
+  <button id="btnLock" class="lockon">🔒 ロック中</button>
+  <button id="btnAR">ARウォーク</button>
+  <button id="btnPanel">☰ パネルを閉じる</button>
   <button id="btnDragMode">ドラッグ: 視点回転</button>
   <label class="tgl"><input type="checkbox" id="chkNew" checked>新規（AICHI）</label>
   <label class="tgl"><input type="checkbox" id="chkOld" checked>既存什器</label>
   <button id="btnTop">真上から</button>
   <button id="btn3d" class="active">3D視点</button>
   <button id="btnWalk">人視点</button>
+  <select id="sceneSel">
+    <option value="">利用シーン: なし</option>
+    <option value="study">自習タイム（8人）</option>
+    <option value="group">グループワーク（26人）</option>
+    <option value="full">イベント満席（46人）</option>
+    <option value="chill">放課後のくつろぎ（7人）</option>
+    <option value="workshop">組み替えワークショップ（14人）</option>
+  </select>
   <button id="btnSave">配置を保存</button>
   <button id="btnReset">初期配置に戻す</button>
 </header>
@@ -403,10 +418,8 @@ doorHeader(17.88,5.72,17.88,6.59);               // 出入り口870
 wallSeg(17.88,6.59,17.88,8.9);
 // 北東ブロック（PS・柱）
 walls.add(box(17.66-16.05, WALL_H, 8.9-7.91, WALL_M, (16.05+17.66)/2, WALL_H/2, Z((7.91+8.9)/2)));
-// 北東の壁 y=8.9（770=出入り口・開口）と前室側壁
-wallSeg(14.726,8.9,15.28,8.9);
-doorHeader(15.28,8.9,16.05,8.9);                 // 出入り口770
-wallSeg(16.05,8.9,17.88,8.9);
+// 北東の壁 y=8.9（開口なし）と前室側壁
+wallSeg(14.726,8.9,17.88,8.9);
 wallSeg(14.726,8.9,14.726,9.566);
 
 // ===== 玄関側の廊下壁 y=9.566（青=腰高窓1800 / 出入り口は東寄り） =====
@@ -418,22 +431,19 @@ wallSeg(14.666,9.566,14.726,9.566);
 
 // ===== ラウンジ右壁 x=9.915 y9.566..12.42（オープンシェルフ上部にコルク掲示板） =====
 wallSeg(9.915,9.566,9.915,12.42);
-walls.add(box(0.035, 0.91, 1.81, mat(COL.cork,0.95), 9.845, 1.75, Z(10.4))); // 馬印 KBC36C
 
 // ===== 北面 y=12.42 =====
 wallSeg(0,12.42,9.915,12.42);
 
-// ===== 西面 x=0（赤丸: 北端に中腰ガラス窓口930） =====
-counterWindow(0,11.48,0,12.42);                  // 窓口930
+// ===== 西面 x=0（北端に出入り口930＝開口） =====
+doorHeader(0,11.48,0,12.42);                     // 出入り口930
 wallSeg(0,8.216,0,11.48);
 
 // ===== 左上ゾーン南壁 y=8.216 と 間仕切り壁 x=3.614（赤丸: 上端に窓口955） =====
 wallSeg(0,8.216,3.614,8.216);
-counterWindow(3.614,7.07,3.614,8.03);            // 窓口955（棚の右＝北端）
+doorHeader(3.614,7.07,3.614,8.03);               // 出入り口955（棚の右＝北端）
 wallSeg(3.614,0.9,3.614,7.07);
 wallSeg(3.614,8.03,3.614,8.216);
-// 消火器（ラウンジ南東角）
-walls.add(cyl(0.09, 0.6, mat(0xc02020, 0.5), 9.7, 0.3, Z(8.35), 12));
 
 /* ================= 家具ビルダー ================= */
 function trapezoidTop(){ // DT-15R-DR 台形天板 W1500(長辺)/750(短辺)×D750
@@ -705,12 +715,17 @@ const b3 = place(()=>moonBench(0x2f6ea5), 'JELL-MARU-900MK ベンチ', 'ø900×H
 const b4 = place(()=>roundBench(0.45, 0.40, 0x9aa88f), 'JELL-MARU-450 ベンチ', 'ø450×H400（提案: FTW14 セージ）', '#9aa88f', 8.48, 11.42, 0, 'new');
 const b5 = place(()=>roundBench(0.45, 0.40, 0xc2a98f), 'JELL-MARU-450 ベンチ', 'ø450×H400（提案: FTW24 アーモンド）', '#c2a98f', 8.34, 10.6, 0, 'new');
 [b1,b2,b3,b4,b5].forEach(b=> b.userData.recolorable = true);
-// mijika オープンシェルフ（ラウンジ右壁沿い・図面は4台 ※Excelは3セット→要確認）
-[11.51, 10.61, 9.71, 8.81].forEach(y=>{
+// mijika オープンシェルフ ×3（ラウンジ右壁沿い・Excel通り3セット）
+[11.51, 10.61, 9.71].forEach(y=>{
   place(mijika, 'mijika オープンシェルフ', 'MJ-0911N-BB+CW-900TPU+CW-900B-B W899×D450×H1120 黒×天板CA（ナイキ）', '#5c4334', 9.69, y, 90, 'new');
 });
-// コルク掲示板 馬印 KBC36C（ラウンジ東壁・壁付け）
-CATALOG['コルク掲示板 KBC36C'] = {count:1, color:'#b9744a', note:'W1810×H910 天然コルク2mm/アルミ枠（馬印）', kind:'new'};
+// コルク掲示板 馬印 KBC36C（ラウンジ右壁・壁付け・選択可）
+const corkItem = place(()=>{
+  const gp = new THREE.Group();
+  gp.add(box(0.035, 0.91, 1.81, mat(COL.cork, 0.95), 0, 1.75, 0));
+  return gp;
+}, 'コルク掲示板 KBC36C', 'W1810×H910 天然コルク2mm/アルミ枠（馬印・壁付け固定）', '#b9744a', 9.845, 10.4, 0, 'new');
+corkItem.userData.locked = true;
 
 // --- グループワーキング（既存） ---
 const islands = [ [6.54,6.22,-35], [5.57,3.97,-35] ];
@@ -737,7 +752,7 @@ islands.forEach(([ix,iy,rot], ii)=>{
 // --- 既存書架（壁面・図面採寸） ---
 [ place(()=>bookshelfRun(9.08), '既存 壁面書架（北面）', 'W9080×D300×H2360（壁付き・固定）', '#d6b183', 5.38, 12.27, 0, 'old'),
   place(()=>bookshelfRun(2.67), '既存 壁面書架（西面）', 'W2670×D300×H2360（壁付き・固定）', '#d6b183', 0.15, 9.7, 90, 'old'),
-  place(()=>bookshelfRun(5.475), '既存 壁面書架（間仕切り側）', 'W5475×D300×H2360 ※北端に窓口955（壁付き・固定）', '#d6b183', 3.764, 4.365, 90, 'old')
+  place(()=>bookshelfRun(6.17), '既存 壁面書架（間仕切り側）', 'W6170×D300×H2360 南の柱〜北端の出入り口まで（壁付き・固定）', '#d6b183', 3.764, 3.985, 90, 'old')
 ].forEach(s=> s.userData.locked = true);
 
 // --- 窓際の既存ベンチ・スツール・モニター（図面採寸） ---
@@ -746,7 +761,7 @@ place(existStool, '既存 スツール（黒レザー）', 'W450×D450 SH450', '
 place(existStool, '既存 スツール（黒レザー）', 'W450×D450 SH450', '#232326', 11.15, 0.7, 0, 'old');
 place(monitorStand, 'モニタースタンド', 'キャスター付・55型', '#3a3d42', 5.3, 0.95, 0, 'old');
 // サンプル人物（凡例には出さない）
-place(humanFigure, '人（サンプル・身長170cm）', 'スケール確認用。ドラッグで移動できます', '#4a6b8a', 13.3, 4.9, -30, 'old');
+const sampleHuman = place(humanFigure, '人（サンプル・身長170cm）', 'スケール確認用。ドラッグで移動できます', '#4a6b8a', 13.3, 4.9, -30, 'old');
 delete CATALOG['人（サンプル・身長170cm）'];
 
 /* ================= サイドバー凡例 ================= */
@@ -780,6 +795,7 @@ function applyFabric(gp, hex){
     const b = document.createElement('button');
     b.style.background = hex; b.title = nm;
     b.onclick = ()=>{
+      if(editLocked){ toast('ロック中です（右上の🔒で解除すると色を変えられます）'); return; }
       if(selected && selected.userData.recolorable){
         applyFabric(selected, hex);
         selected.userData.fabricName = nm;
@@ -819,10 +835,15 @@ function pick(ev){
   while(o.parent && !o.userData.id) o = o.parent;
   return o.userData.id ? o : null;
 }
+let editLocked = true; // 誤操作防止: 初期はロック（🔒ボタンで解除）
 renderer.domElement.addEventListener('pointerdown', ev=>{
-  if(ev.button!==0) return;
+  if(ev.button!==0 || arActive) return;
   const hit = pick(ev);
   select(hit);
+  if(hit && editLocked){
+    toast('ロック中のため動かせません（右上の🔒で解除）');
+    return;
+  }
   if(hit && !hit.userData.locked){
     dragging = true; controls.enabled = false;
     const pt = new THREE.Vector3();
@@ -845,12 +866,19 @@ renderer.domElement.addEventListener('pointermove', ev=>{
 });
 window.addEventListener('pointerup', ()=>{ dragging = false; controls.enabled = true; });
 window.addEventListener('keydown', ev=>{
-  if(!selected) return;
+  if(!selected || editLocked) return;
   if(ev.key==='q'||ev.key==='Q') selected.rotation.y += THREE.MathUtils.degToRad(15);
   if(ev.key==='e'||ev.key==='E') selected.rotation.y -= THREE.MathUtils.degToRad(15);
 });
-document.getElementById('btnRotL').onclick = ()=>{ if(selected) selected.rotation.y += THREE.MathUtils.degToRad(15); };
-document.getElementById('btnRotR').onclick = ()=>{ if(selected) selected.rotation.y -= THREE.MathUtils.degToRad(15); };
+document.getElementById('btnRotL').onclick = ()=>{ if(editLocked){ toast('ロック中です（右上の🔒で解除）'); return; } if(selected) selected.rotation.y += THREE.MathUtils.degToRad(15); };
+document.getElementById('btnRotR').onclick = ()=>{ if(editLocked){ toast('ロック中です（右上の🔒で解除）'); return; } if(selected) selected.rotation.y -= THREE.MathUtils.degToRad(15); };
+document.getElementById('btnLock').onclick = ev=>{
+  editLocked = !editLocked;
+  ev.target.textContent = editLocked ? '🔒 ロック中' : '🔓 編集可';
+  ev.target.classList.toggle('lockon', editLocked);
+  ev.target.classList.toggle('active', !editLocked);
+  toast(editLocked ? 'ロックしました（什器は動かせません）' : 'ロック解除。什器をドラッグで動かせます');
+};
 
 /* ================= 表示切替・保存 ================= */
 function toast(msg){
@@ -858,8 +886,10 @@ function toast(msg){
   t.textContent = msg; t.style.opacity = 1;
   setTimeout(()=>{ t.style.opacity = 0; }, 1800);
 }
-document.getElementById('btnPanel').onclick = ()=>{
-  document.getElementById('sidebar').classList.toggle('hidden');
+document.getElementById('btnPanel').onclick = ev=>{
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('hidden');
+  ev.target.textContent = sb.classList.contains('hidden') ? '☰ パネルを開く' : '☰ パネルを閉じる';
   resize();
 };
 let dragPan = false; // ドラッグ（スワイプ）を回転⇔移動で切替
@@ -914,6 +944,7 @@ function applyLayout(payload){
   return true;
 }
 document.getElementById('btnSave').onclick = async ()=>{
+  if(sceneSnapshot){ toast('利用シーン再生中は保存できません（「なし」に戻してから）'); return; }
   const payload = collectLayout();
   localStorage.setItem(LS_KEY, JSON.stringify(payload));
   if(!SYNC.url){ toast('この端末に保存しました（共有ストレージ未設定）'); return; }
@@ -929,6 +960,7 @@ document.getElementById('btnSave').onclick = async ()=>{
   }
 };
 document.getElementById('btnReset').onclick = ()=>{
+  if(editLocked){ toast('ロック中です（右上の🔒で解除してから実行）'); return; }
   localStorage.removeItem(LS_KEY);
   movables.forEach(m=>{
     const h = m.userData.home;
@@ -951,7 +983,228 @@ document.getElementById('btnReset').onclick = ()=>{
   }catch(e){}
 })();
 
+/* ================= 利用シーンモード（人が動き回る観覧モード） ================= */
+const PEOPLE = new THREE.Group(); scene.add(PEOPLE);
+const scenePeople = [];
+const SHIRTS = [0x4a6b8a, 0x8a5a4a, 0x5a8a5f, 0x9a8a4a, 0x6a4a8a, 0x4a8a8a, 0x996a4a, 0x5a6070, 0xa06a7a, 0x50758a];
+function pickShirt(){ return SHIRTS[Math.floor(Math.random()*SHIRTS.length)]; }
+function personParts(shirt){ // 立ち姿（脚が振れる）
+  const gp = new THREE.Group();
+  const cloth = mat(shirt, 0.85), skin = mat(0xd9b38f, 0.7), pants = mat(0x3a3f4a, 0.85);
+  const legL = cyl(0.05, 0.78, pants, -0.085, 0.39, 0, 10);
+  const legR = cyl(0.05, 0.78, pants, 0.085, 0.39, 0, 10);
+  const torso = cyl(0.15, 0.6, cloth, 0, 1.09, 0, 12);
+  const armL = cyl(0.04, 0.5, cloth, -0.19, 1.08, 0, 8); armL.rotation.z = 0.1;
+  const armR = cyl(0.04, 0.5, cloth, 0.19, 1.08, 0, 8); armR.rotation.z = -0.1;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), skin);
+  head.position.y = 1.52; head.castShadow = true;
+  gp.add(legL, legR, torso, armL, armR, head);
+  return {gp, legL, legR, armR};
+}
+function seatedFigure(shirt){ // 座り姿
+  const gp = new THREE.Group();
+  const cloth = mat(shirt, 0.85), skin = mat(0xd9b38f, 0.7), pants = mat(0x3a3f4a, 0.85);
+  gp.add(box(0.3, 0.14, 0.44, pants, 0, 0.5, 0.12));                    // 腿（前へ）
+  [-0.08, 0.08].forEach(x=> gp.add(cyl(0.045, 0.44, pants, x, 0.24, 0.3, 8))); // すね
+  gp.add(cyl(0.15, 0.55, cloth, 0, 0.85, 0, 12));                       // 胴
+  [-0.19, 0.19].forEach(x=>{ const a = cyl(0.04, 0.38, cloth, x, 0.88, 0.06, 8); a.rotation.x = -0.35; gp.add(a); });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), skin);
+  head.position.y = 1.26; head.castShadow = true; gp.add(head);
+  return gp;
+}
+function mkWalker(path, speed=0.85){ // 経路をループで歩く
+  const {gp, legL, legR} = personParts(pickShirt());
+  PEOPLE.add(gp);
+  const segs = []; let total = 0;
+  for(let i=0;i<path.length;i++){
+    const a = path[i], b = path[(i+1)%path.length];
+    const L = Math.hypot(b[0]-a[0], b[1]-a[1]); segs.push({a, b, L}); total += L;
+  }
+  scenePeople.push({mode:'walk', gp, legL, legR, segs, total, dist:Math.random()*total, speed, phase:Math.random()*6});
+}
+function mkSitter(x, y, face){
+  const gp = seatedFigure(pickShirt());
+  gp.position.set(x, 0, Z(y)); gp.rotation.y = face;
+  PEOPLE.add(gp);
+  scenePeople.push({mode:'sit', gp, phase:Math.random()*6});
+}
+function mkStander(x, y, face){
+  const {gp} = personParts(pickShirt());
+  gp.position.set(x, 0, Z(y)); gp.rotation.y = face;
+  PEOPLE.add(gp);
+  scenePeople.push({mode:'stand', gp, baseRot:face, phase:Math.random()*6});
+}
+function mkWriter(x, y, face){ // ホワイトボードに書いている人（腕を上げて小さく動く）
+  const {gp, armR} = personParts(pickShirt());
+  armR.rotation.x = -1.25; armR.position.y = 1.22; armR.position.z = 0.14;
+  gp.position.set(x, 0, Z(y)); gp.rotation.y = face;
+  PEOPLE.add(gp);
+  scenePeople.push({mode:'write', gp, armR, phase:Math.random()*6});
+}
+// シーン用の什器一時移動（シーン解除で自動復元）
+let sceneSnapshot = null;
+const trapItems = () => movables.filter(m=>m.userData.name==='DT-15R-DR 台形テーブル');
+const navItems  = () => movables.filter(m=>m.userData.name.startsWith('Navette'));
+const dtnItems  = () => movables.filter(m=>m.userData.name==='DTN-9090 テーブル');
+const geneItems = () => movables.filter(m=>m.userData.name==='Gene-SN チェア');
+const wbItems   = () => movables.filter(m=>m.userData.name.startsWith('PL-WBC'));
+function moveIt(m, x, y, rot){ m.position.set(x, 0, Z(y)); m.rotation.y = THREE.MathUtils.degToRad(rot); }
+function hexSit(gi, idxs){ // 六角テーブルの席に座らせる
+  const [hx,hy,rot] = hexes[gi];
+  idxs.forEach(i=>{
+    const a = THREE.MathUtils.degToRad(rot + 30 + i*60);
+    mkSitter(hx + Math.cos(a)*1.0, hy + Math.sin(a)*1.0, Math.atan2(-Math.cos(a), Math.sin(a)));
+  });
+}
+function dtnSit(ti, idxs){
+  const [tx,ty,rot] = dtns[ti];
+  idxs.forEach(i=>{
+    const a = THREE.MathUtils.degToRad(rot + i*90);
+    mkSitter(tx + Math.cos(a)*0.75, ty + Math.sin(a)*0.75, Math.atan2(-Math.cos(a), Math.sin(a)));
+  });
+}
+function islandSit(ii, count){
+  const [ix,iy,rot] = islands[ii]; const r = THREE.MathUtils.degToRad(rot);
+  for(let i=0;i<count;i++){
+    const side = i%2 ? 1 : -1;
+    const along = (Math.floor(i/2) - (count/2-1)/2) * 0.75;
+    mkSitter(ix + Math.cos(r)*along - Math.sin(r)*0.82*side,
+             iy + Math.sin(r)*along + Math.cos(r)*0.82*side,
+             THREE.MathUtils.degToRad(rot + (side>0?0:180)));
+  }
+}
+const SCENES = {
+  study(){ // 静かな自習タイム
+    hexSit(0,[0,3]); hexSit(3,[1]);
+    dtnSit(0,[2]); dtnSit(2,[1]);
+    mkSitter(7.15, 11.07, Math.PI*0.9);      // ラウンジベンチ
+    mkSitter(10.65, 0.78, Math.PI);          // 窓際スツール
+    mkWalker([[13.9,8.9],[10.7,8.3],[8.7,5.0],[12.9,4.9],[15.0,5.4],[14.9,7.9]], 0.7);
+  },
+  group(){ // 授業・グループワーク
+    for(let g=0; g<5; g++) hexSit(g, [0,1,3,4]);
+    mkWriter(12.15, 4.95, 0.5);              // 衝立に書き込む発表者
+    mkStander(6.95, 7.15, 2.2); mkStander(7.3, 6.85, -0.9); // 相談中の2人
+    mkWalker([[13.9,8.9],[10.6,8.35],[8.6,6.2],[8.8,4.9],[12.9,4.9],[15.0,5.3],[14.9,7.9]], 0.75); // 巡回する先生
+    mkWalker([[4.6,1.6],[8.0,1.6],[12.0,1.5],[16.8,2.0],[12.5,1.7],[8.0,1.7]], 0.65);
+  },
+  full(){ // イベントで満席
+    for(let g=0; g<5; g++) hexSit(g, [0,1,2,3,4,5]);
+    islandSit(0, 6); islandSit(1, 4);
+    dtnSit(0,[0,2]); dtnSit(1,[1]); dtnSit(2,[0]);
+    mkSitter(7.15, 11.07, Math.PI); mkSitter(7.3, 9.7, 0.6);
+    mkWalker([[13.9,8.9],[11.5,7.9],[8.6,8.6],[7.8,10.6],[8.8,8.8],[12.6,8.2]], 0.8);
+    mkWalker([[5.0,1.6],[9.6,1.7],[13.6,1.7],[17.0,2.0],[13.6,1.8],[9.0,1.6]], 0.7);
+  },
+  chill(){ // 放課後のくつろぎ
+    mkSitter(7.15, 11.07, 2.6); mkSitter(7.3, 9.7, -0.5); mkSitter(7.95, 9.25, 2.0);
+    mkSitter(8.0, 0.78, Math.PI); mkSitter(8.7, 0.78, Math.PI); // 窓際赤ベンチ
+    mkSitter(11.15, 0.78, Math.PI);
+    mkWalker([[13.9,8.8],[10.5,8.4],[8.2,9.9],[8.6,11.3],[9.2,9.4],[12.6,7.8]], 0.55);
+  },
+  workshop(){ // 台形を解体・組み替えるワークショップ
+    const tp = trapItems(), nv = navItems(), dt = dtnItems(), ge = geneItems(), wb = wbItems();
+    // 六角1を分解 → 対面の2卓に
+    moveIt(tp[0], 9.7, 7.9, 0); moveIt(tp[1], 11.4, 7.9, 180);
+    // 六角2＋六角3の台形4台 → 一列の大テーブル
+    [[11.9,90],[12.65,-90],[13.4,90],[14.15,-90]].forEach(([x,r], i)=> moveIt(tp[2+i], x, 5.6, r));
+    // Navetteチェアを組み替え先へ（残りは壁際にストック）
+    [[11.9,6.6,180],[12.65,6.6,180],[13.4,6.6,180],[14.15,6.6,180],
+     [11.9,4.6,0],[12.65,4.6,0],[13.4,4.6,0],[14.15,4.6,0],
+     [9.7,8.7,180],[11.4,7.1,0],[9.0,7.7,90],[12.1,8.3,-90]].forEach(([x,y,r], i)=> moveIt(nv[i], x, y, r));
+    [[16.5,1.3,0],[17.0,1.3,0],[16.5,2.1,180],[17.0,2.1,180],[16.0,1.3,0],[16.0,2.1,180]].forEach(([x,y,r], i)=> moveIt(nv[12+i], x, y, r));
+    // 左上: 正方形テーブル2台を連結して大きめの島に
+    moveIt(dt[0], 2.2, 10.2, 0); moveIt(dt[1], 3.1, 10.2, 0);
+    [[2.2,10.95,180],[3.1,10.95,180],[2.2,9.45,0],[3.1,9.45,0]].forEach(([x,y,r], i)=> moveIt(ge[i], x, y, r));
+    // 衝立を大テーブルの端へ
+    moveIt(wb[3], 15.3, 5.6, 90);
+    // 人
+    [[11.9,6.6],[13.4,6.6],[12.65,4.6],[14.15,4.6],[11.9,4.6]].forEach(([x,y])=> mkSitter(x, y, y>5.6?Math.PI:0));
+    mkSitter(9.7, 8.7, Math.PI); mkSitter(11.4, 7.1, 0);
+    mkSitter(2.2, 10.95, Math.PI); mkSitter(3.1, 9.45, 0); mkSitter(2.2, 9.45, 0);
+    mkWriter(14.9, 5.6, Math.PI/2);          // 大テーブル端の衝立に書く人
+    mkStander(10.45, 6.7, -0.6);
+    mkWalker([[13.9,8.9],[10.6,8.35],[8.7,5.0],[10.2,3.2],[8.7,2.0],[6.0,1.8],[8.5,4.5]], 0.7);
+  },
+};
+document.getElementById('sceneSel').onchange = ev=>{
+  PEOPLE.clear(); scenePeople.length = 0;
+  if(sceneSnapshot){ applyLayout(sceneSnapshot); sceneSnapshot = null; } // 什器を元に戻す
+  const v = ev.target.value;
+  sampleHuman.visible = !v;
+  if(v && SCENES[v]){
+    sceneSnapshot = collectLayout(); // シーンが什器を動かす場合に備えて退避
+    SCENES[v]();
+  }
+  toast(v ? ev.target.selectedOptions[0].textContent + ' を再生中（視点は自由に動かせます）' : '利用シーンを解除しました（什器の配置も復元）');
+};
+
+/* ================= ARウォーク（スマホ: ジャイロで見回し・歩数で前進） ================= */
+let arActive = false;
+const arZee = new THREE.Vector3(0,0,1), arEuler = new THREE.Euler();
+const arQ0 = new THREE.Quaternion(), arQ1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+let devO = null, scrO = 0, lastMag = 9.8, lastStep = 0;
+function onDevO(e){ devO = e; }
+function onScrO(){ scrO = (screen.orientation && screen.orientation.angle) || window.orientation || 0; }
+function onMotion(e){ // 歩数検出（加速度のピーク）
+  const acc = e.accelerationIncludingGravity; if(!acc) return;
+  const m = Math.hypot(acc.x||0, acc.y||0, acc.z||0);
+  const now = performance.now();
+  if(m > 11.8 && lastMag <= 11.8 && now - lastStep > 380){
+    lastStep = now;
+    const dir = new THREE.Vector3(); camera.getWorldDirection(dir); dir.y = 0;
+    if(dir.lengthSq() > 0.0001){
+      dir.normalize();
+      const nx = camera.position.x + dir.x*0.65, nz = camera.position.z + dir.z*0.65;
+      if(inRoom(THREE.MathUtils.clamp(nx,0.1,ROOM_W-0.1), THREE.MathUtils.clamp(-nz,0.1,ROOM_D-0.1))){
+        camera.position.x = nx; camera.position.z = nz;
+      }
+    }
+  }
+  lastMag = m;
+}
+function updateARCamera(){
+  if(!devO) return;
+  const a = THREE.MathUtils.degToRad(devO.alpha||0);
+  const b = THREE.MathUtils.degToRad(devO.beta||0);
+  const g = THREE.MathUtils.degToRad(devO.gamma||0);
+  arEuler.set(b, a, -g, 'YXZ');
+  camera.quaternion.setFromEuler(arEuler);
+  camera.quaternion.multiply(arQ1);
+  camera.quaternion.multiply(arQ0.setFromAxisAngle(arZee, -THREE.MathUtils.degToRad(scrO)));
+}
+document.getElementById('btnAR').onclick = async ev=>{
+  if(!arActive){
+    try{
+      if(typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission){
+        if(await DeviceOrientationEvent.requestPermission() !== 'granted') throw 0;
+      }
+      if(typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission){
+        await DeviceMotionEvent.requestPermission().catch(()=>{});
+      }
+    }catch(e){ toast('センサーの許可が必要です（スマホで開いてください）'); return; }
+    if(!('ondeviceorientation' in window)){ toast('この端末はジャイロ非対応のようです'); return; }
+    window.addEventListener('deviceorientation', onDevO);
+    window.addEventListener('devicemotion', onMotion);
+    onScrO(); window.addEventListener('orientationchange', onScrO);
+    arActive = true; controls.enabled = false;
+    camera.position.set(8.2, 1.5, Z(2.0));
+    ev.target.classList.add('active');
+    setViewBtn('');
+    toast('ARウォーク: スマホをかざして見回し、実際に歩くと前に進みます');
+  } else {
+    arActive = false; devO = null; controls.enabled = true;
+    window.removeEventListener('deviceorientation', onDevO);
+    window.removeEventListener('devicemotion', onMotion);
+    window.removeEventListener('orientationchange', onScrO);
+    ev.target.classList.remove('active');
+    view3d(); setViewBtn('btn3d');
+    toast('ARウォークを終了しました');
+  }
+};
+
 /* ================= ループ ================= */
+const clock = new THREE.Clock();
 function resize(){
   const w = viewport.clientWidth, h = viewport.clientHeight;
   camera.aspect = w/h; camera.updateProjectionMatrix();
@@ -961,11 +1214,37 @@ function resize(){
 window.addEventListener('resize', resize);
 resize();
 renderer.setAnimationLoop(()=>{
-  controls.update();
+  if(arActive) updateARCamera(); else controls.update();
   // 照明（影）を視点に追従させる: カメラの回転に合わせて太陽の方位も回す
   const az = controls.getAzimuthalAngle();
   sun.position.set(controls.target.x + Math.sin(az+0.7)*9, 13, controls.target.z + Math.cos(az+0.7)*9);
   sun.target.position.set(controls.target.x, 0, controls.target.z);
+  // 利用シーンの人物アニメーション
+  const dt = clock.getDelta(), tt = clock.elapsedTime;
+  for(const p of scenePeople){
+    if(p.mode === 'walk'){
+      p.dist = (p.dist + dt*p.speed) % p.total;
+      let d = p.dist;
+      for(const s of p.segs){
+        if(d <= s.L){
+          const t = d/s.L;
+          p.gp.position.set(s.a[0]+(s.b[0]-s.a[0])*t, Math.abs(Math.sin(tt*7+p.phase))*0.025, Z(s.a[1]+(s.b[1]-s.a[1])*t));
+          p.gp.rotation.y = Math.atan2(s.b[0]-s.a[0], -(s.b[1]-s.a[1]));
+          break;
+        }
+        d -= s.L;
+      }
+      const sw = Math.sin(tt*7 + p.phase)*0.45;
+      p.legL.rotation.x = sw; p.legR.rotation.x = -sw;
+    } else if(p.mode === 'stand'){
+      p.gp.rotation.y = p.baseRot + Math.sin(tt*0.6 + p.phase)*0.2;
+    } else if(p.mode === 'write'){ // 板書の手の動き
+      p.armR.rotation.z = -0.2 + Math.sin(tt*5 + p.phase)*0.14;
+      p.armR.rotation.x = -1.25 + Math.sin(tt*2.3 + p.phase)*0.08;
+    } else { // sit: 小さく身じろぎ
+      p.gp.rotation.y += Math.sin(tt*0.5 + p.phase)*0.0008;
+    }
+  }
   renderer.render(scene, camera);
 });
 </script>

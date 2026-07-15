@@ -104,7 +104,7 @@
       <ul class="legend" id="legendOld"></ul>
     </div>
     <div class="panel">
-      <h2>ベンチ張地カラー（FAT / FTW）</h2>
+      <h2>スツール／ベンチ 張地カラー（FAT 全26色）</h2>
       <div id="palette" class="swatches"></div>
       <div class="hint">JELLYベンチを選択してから色をクリック</div>
     </div>
@@ -176,21 +176,32 @@ function woodTex(base, streak){ // streak: 'r,g,b'
     g.putImageData(im,0,0);
   });
 }
-function fabricTex(){ // ブークレ調の布地（明るいグレー地・material.colorで着色）
+function fabricTex(){ // FAT: ポリエステル100%のワッフル/ピケ調（凹凸の粒が菱格子に並ぶ編み地）
   return canvasTex((g,w,h)=>{
-    g.fillStyle = '#d8d8d8'; g.fillRect(0,0,w,h);
-    for(let y=0;y<h;y+=5){ // 編み目の列
-      g.fillStyle = 'rgba(105,105,105,0.10)';
-      g.fillRect(0, y, w, 1.5);
+    g.fillStyle = '#8f8f8f'; g.fillRect(0,0,w,h);         // 谷（目地）＝やや暗い地
+    const sp = 8, R = 3.6;                                 // 編み目ピッチ（256を割り切る）／粒の半径
+    function stamp(X, Y, bright){
+      const gr = g.createRadialGradient(X-1.4, Y-1.4, 0.3, X, Y, R);
+      gr.addColorStop(0,   `rgba(${bright+42|0},${bright+42|0},${bright+42|0},1)`);   // 山の頂（ハイライト）
+      gr.addColorStop(0.55,`rgba(${bright|0},${bright|0},${bright|0},0.98)`);
+      gr.addColorStop(1,   'rgba(92,92,92,0.15)');                                    // 裾は地へなじむ
+      g.fillStyle = gr;
+      g.beginPath(); g.arc(X, Y, R, 0, 7); g.fill();
     }
-    for(let i=0;i<8500;i++){ // ループパイルの粒
-      const v = 168 + Math.random()*85 | 0;
-      g.fillStyle = `rgba(${v},${v},${v},${(0.45+Math.random()*0.5).toFixed(2)})`;
-      g.beginPath();
-      g.arc(Math.random()*w, Math.random()*h, 0.8+Math.random()*1.8, 0, 7);
-      g.fill();
+    for(let ry=0; ry<h/sp; ry++){
+      for(let rx=0; rx<w/sp; rx++){
+        const cx = rx*sp + (ry%2)*sp/2;                    // 半目ずらしの菱格子
+        const cy = ry*sp;
+        const jz = (Math.random()-0.5)*1.0;                // ごく僅かな揺らぎ
+        const bright = 176 + Math.random()*58 | 0;         // 目ごとの明暗（杢調）
+        // タイル継ぎ目を消すため上下左右へ回り込ませて重ね押し
+        for(const ox of [-w,0,w]) for(const oy of [-h,0,h]){
+          const X = cx+jz+ox, Y = cy+jz+oy;
+          if(X>-R && X<w+R && Y>-R && Y<h+R) stamp(X, Y, bright);
+        }
+      }
     }
-  }, 256, 256, [1.6,1.6]);
+  }, 256, 256, [2.4,2.4]);
 }
 const TEX = {
   beech: woodTex('#d4b183','140,95,55'),
@@ -213,7 +224,7 @@ const TEX = {
 };
 const WALL_M = new THREE.MeshStandardMaterial({map:TEX.plaster, roughness:0.95});
 function woodMat(tex, rough=0.6){ return new THREE.MeshStandardMaterial({map:tex, roughness:rough}); }
-function fabMat(color){ return new THREE.MeshStandardMaterial({color, map:TEX.fab, bumpMap:TEX.fab, bumpScale:0.6, roughness:0.98}); }
+function fabMat(color){ return new THREE.MeshStandardMaterial({color, map:TEX.fab, bumpMap:TEX.fab, bumpScale:1.4, roughness:0.96}); }
 function box(w,h,d,m,x=0,y=0,z=0){ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(x,y,z); o.castShadow=o.receiveShadow=true; return o; }
 function cyl(r,h,m,x=0,y=0,z=0,seg=20){ const o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),m); o.position.set(x,y,z); o.castShadow=true; return o; }
 
@@ -776,15 +787,18 @@ function renderLegend(){
 }
 renderLegend();
 
-/* ================= ベンチ張地パレット（AICHI FAT/FTW） ================= */
+/* ================= スツール/ベンチ張地パレット（AICHI FAT 全26色・実物スウォッチ準拠） ================= */
+// ポリエステル100%・26色。色は届いた色見本帳の写真から採取。
 const PALETTE = [
-  ['FAT01 ホワイト','#ecebe5'], ['FAT05 シャンパン','#cbbba8'], ['FAT04 ブラック','#2e2c2c'],
-  ['FAT11 サフランイエロー','#dfa32b'], ['FAT30 アシッドグリーン','#a8a12f'], ['FAT14 オレンジ','#d96c26'],
-  ['FAT16 カーマイン','#b02534'], ['FAT31 メドウグリーン','#2e6b46'], ['FAT24 アクアグリーン','#3e8f8a'],
-  ['FAT25 ゼニスブルー','#2f6ea5'], ['FAT27 バリブルー','#274a77'],
-  ['FTW09 ライム','#b9b944'], ['FTW10 モスグリーン','#5a6b4a'], ['FTW13 パウダーブルー','#8fb0c2'],
-  ['FTW14 セージ','#9aa88f'], ['FTW17 ライトグレー','#b9bcbc'], ['FTW23 セピア','#6b4f3f'],
-  ['FTW24 アーモンド','#c2a98f'], ['FTW02 バーガンディ','#6e2f3a'], ['FTW16 ナイトブルー','#2c3550'],
+  ['FAT29 ネイビー','#233149'],        ['FAT27 コバルトブルー','#2b57a4'],  ['FAT26 オーシャンブルー','#2c86c6'],
+  ['FAT25 スカイブルー','#2f9fd6'],     ['FAT24 アクアミント','#a5d2ce'],    ['FAT34 グレー','#8b8e91'],
+  ['FAT03 チャコールグレー','#3b424a'], ['FAT04 ブラック','#1c1c1e'],        ['FAT09 エスプレッソ','#352a2a'],
+  ['FAT08 コーヒーブラウン','#4a3328'], ['FAT06 サンドカーキ','#a7a06b'],    ['FAT18 オートミール','#dccbb5'],
+  ['FAT22 パープル','#6b4a86'],         ['FAT20 オーキッド','#a04a84'],      ['FAT21 ワイン','#7c3a52'],
+  ['FAT17 クリムゾン','#911f39'],       ['FAT16 レッド','#d81f2b'],          ['FAT15 バーミリオン','#d8492a'],
+  ['FAT35 バーントオレンジ','#d95f26'], ['FAT14 オレンジ','#e1662a'],        ['FAT13 テラコッタ','#c46a34'],
+  ['FAT19 サーモンピンク','#d98b7b'],   ['FAT12 マスタード','#ccb62f'],      ['FAT30 オリーブ','#a6a233'],
+  ['FAT07 カーキオリーブ','#6b6a30'],   ['FAT31 リーフグリーン','#82b23f'],
 ];
 function applyFabric(gp, hex){
   gp.traverse(o=>{ if(o.isMesh && o.userData.fabric) o.material.color.set(hex); });

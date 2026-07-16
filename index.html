@@ -66,6 +66,7 @@
   <h1>T1402 共創拠点 3Dレイアウト（タワー75・14F）</h1>
   <span class="spacer"></span>
   <button id="btnLock" class="lockon">🔒 ロック中</button>
+  <button id="btnHere">📍 立ち位置</button>
   <button id="btnAR">ARウォーク</button>
   <button id="btnPanel">☰ パネルを閉じる</button>
   <button id="btnDragMode">ドラッグ: 視点回転</button>
@@ -115,7 +116,8 @@
         余白ドラッグ：視点の回転<br>
         右ドラッグ・2本指・矢印キー：視点の上下左右移動<br>
         ホイール／ピンチ：ズーム<br>
-        人視点：ドラッグで見回し・矢印キーで歩く
+        人視点：ドラッグで見回し・矢印キーで歩く<br>
+        📍立ち位置：真上図で床タップ→スワイプで向き。ARウォークはそこから開始
       </div>
     </div>
   </div>
@@ -852,6 +854,12 @@ function pick(ev){
 }
 let editLocked = true; // 誤操作防止: 初期はロック（🔒ボタンで解除）
 renderer.domElement.addEventListener('pointerdown', ev=>{
+  if(arPlacing){                        // 立ち位置の設定中: 床タップで位置決め
+    if(ev.button!==0) return;
+    arPlacingDrag = true; controls.enabled = false;
+    placeDown(ev);
+    return;
+  }
   if(ev.button!==0 || arActive) return;
   const hit = pick(ev);
   select(hit);
@@ -867,6 +875,7 @@ renderer.domElement.addEventListener('pointerdown', ev=>{
   }
 });
 renderer.domElement.addEventListener('pointermove', ev=>{
+  if(arPlacingDrag){ placeHeading(ev); return; }   // そのままスワイプで向きを指定
   if(!dragging || !selected) return;
   const r = renderer.domElement.getBoundingClientRect();
   mouse.x = ((ev.clientX-r.left)/r.width)*2-1;
@@ -879,7 +888,10 @@ renderer.domElement.addEventListener('pointermove', ev=>{
     selected.position.set(nx, 0, nz);
   }
 });
-window.addEventListener('pointerup', ()=>{ dragging = false; controls.enabled = true; });
+window.addEventListener('pointerup', ()=>{
+  if(arPlacingDrag){ arPlacingDrag = false; controls.enabled = true; return; }
+  dragging = false; controls.enabled = true;
+});
 window.addEventListener('keydown', ev=>{
   if(!selected || editLocked) return;
   if(ev.key==='q'||ev.key==='Q') selected.rotation.y += THREE.MathUtils.degToRad(15);
@@ -1156,7 +1168,56 @@ document.getElementById('sceneSel').onchange = ev=>{
 
 /* ================= ARウォーク（スマホ: ジャイロで見回し・歩数で前進） ================= */
 let arActive = false;
+/* --- 立ち位置マーカー（ARウォークの開始地点と向きを事前指定） --- */
+let arPlacing = false, arPlacingDrag = false;
+let arStart = null;                    // {x, y, fx, fz}  x,y=室内座標 / fx,fz=world向き
+const arDownRoom = {x:0, y:0};
+const arMarker = new THREE.Group(); arMarker.visible = false; scene.add(arMarker);
+(function buildMarker(){
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(0.34, 32),
+    new THREE.MeshBasicMaterial({color:0x1abc9c, transparent:true, opacity:0.55, side:THREE.DoubleSide}));
+  disc.rotation.x = -Math.PI/2; disc.position.y = 0.02; arMarker.add(disc);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.42, 32),
+    new THREE.MeshBasicMaterial({color:0x0e8f76, side:THREE.DoubleSide}));
+  ring.rotation.x = -Math.PI/2; ring.position.y = 0.022; arMarker.add(ring);
+  const person = humanFigure();        // 立っている自分の目印
+  person.traverse(o=>{ if(o.isMesh){ o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.9; o.castShadow = false; } });
+  arMarker.add(person);
+  const arrowM = new THREE.MeshBasicMaterial({color:0xff5a3c});   // 向き矢印（前方 -z）
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.8), arrowM); shaft.position.set(0, 0.05, -0.72); arMarker.add(shaft);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.42, 4), arrowM); tip.rotation.x = -Math.PI/2; tip.position.set(0, 0.05, -1.28); arMarker.add(tip);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8),
+    new THREE.MeshBasicMaterial({color:0x0e8f76})); pole.position.y = 0.25; arMarker.add(pole);  // 立ち位置を上空からも把握しやすく
+})();
+function arFloorRoom(ev){              // 画面座標→床の室内座標(x,y)
+  const r = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((ev.clientX-r.left)/r.width)*2-1;
+  mouse.y = -((ev.clientY-r.top)/r.height)*2+1;
+  ray.setFromCamera(mouse, camera);
+  const pt = new THREE.Vector3();
+  if(!ray.ray.intersectPlane(floorPlane, pt)) return null;
+  return { x: THREE.MathUtils.clamp(pt.x, 0.1, ROOM_W-0.1), y: THREE.MathUtils.clamp(-pt.z, 0.1, ROOM_D-0.1) };
+}
+function arUpdateMarker(){
+  if(!arStart) return;
+  arMarker.visible = true;
+  arMarker.position.set(arStart.x, 0, Z(arStart.y));
+  arMarker.rotation.y = Math.atan2(-arStart.fx, -arStart.fz);
+}
+function placeDown(ev){                 // タップ位置を立ち位置に
+  const p = arFloorRoom(ev); if(!p) return;
+  arStart = { x:p.x, y:p.y, fx: arStart?arStart.fx:0, fz: arStart?arStart.fz:-1 };
+  arDownRoom.x = p.x; arDownRoom.y = p.y;
+  arUpdateMarker();
+}
+function placeHeading(ev){              // タップ点からのスワイプ方向を向きに
+  const p = arFloorRoom(ev); if(!p || !arStart) return;
+  const rx = p.x - arDownRoom.x, ry = p.y - arDownRoom.y, L = Math.hypot(rx, ry);
+  if(L > 0.12){ arStart.fx = rx/L; arStart.fz = -ry/L; arUpdateMarker(); }
+}
 const arZee = new THREE.Vector3(0,0,1), arEuler = new THREE.Euler();
+const arYawQ = new THREE.Quaternion(), arYUP = new THREE.Vector3(0,1,0);
+let arYawOffset = 0, arAlign = false;   // 指定した向きへ画面を合わせる補正角
 const arQ0 = new THREE.Quaternion(), arQ1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
 let devO = null, scrO = 0, lastMag = 9.8, lastStep = 0;
 function onDevO(e){ devO = e; }
@@ -1187,6 +1248,15 @@ function updateARCamera(){
   camera.quaternion.setFromEuler(arEuler);
   camera.quaternion.multiply(arQ1);
   camera.quaternion.multiply(arQ0.setFromAxisAngle(arZee, -THREE.MathUtils.degToRad(scrO)));
+  if(arAlign && arStart){               // 開始時: 指定した向きに画面が向くよう補正角を確定
+    const camDir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion); camDir.y = 0;
+    if(camDir.lengthSq() > 1e-6){
+      camDir.normalize();
+      arYawOffset = Math.atan2(arStart.fx, arStart.fz) - Math.atan2(camDir.x, camDir.z);
+    }
+    arAlign = false;
+  }
+  camera.quaternion.premultiply(arYawQ.setFromAxisAngle(arYUP, arYawOffset));
 }
 document.getElementById('btnAR').onclick = async ev=>{
   if(!arActive){
@@ -1203,10 +1273,20 @@ document.getElementById('btnAR').onclick = async ev=>{
     window.addEventListener('devicemotion', onMotion);
     onScrO(); window.addEventListener('orientationchange', onScrO);
     arActive = true; controls.enabled = false;
-    camera.position.set(8.2, 1.5, Z(2.0));
+    arPlacing = false; arPlacingDrag = false;
+    document.getElementById('btnHere').classList.remove('active');
+    if(arStart){
+      camera.position.set(arStart.x, 1.5, Z(arStart.y));
+      arAlign = true;                   // 指定した向きに画面を合わせる
+      toast('ARウォーク: 指定した立ち位置・向きから開始。実際に歩くと前に進みます');
+    } else {
+      camera.position.set(8.2, 1.5, Z(2.0));
+      arYawOffset = 0; arAlign = false;
+      toast('ARウォーク: スマホをかざして見回し、歩くと前進（先に「📍立ち位置」で開始地点を指定できます）');
+    }
+    arMarker.visible = false;           // 一人称の間はマーカーを隠す
     ev.target.classList.add('active');
     setViewBtn('');
-    toast('ARウォーク: スマホをかざして見回し、実際に歩くと前に進みます');
   } else {
     arActive = false; devO = null; controls.enabled = true;
     window.removeEventListener('deviceorientation', onDevO);
@@ -1214,7 +1294,21 @@ document.getElementById('btnAR').onclick = async ev=>{
     window.removeEventListener('orientationchange', onScrO);
     ev.target.classList.remove('active');
     view3d(); setViewBtn('btn3d');
+    if(arStart) arUpdateMarker();       // 立ち位置マーカーを再表示
     toast('ARウォークを終了しました');
+  }
+};
+document.getElementById('btnHere').onclick = ev=>{
+  if(arActive){ toast('ARウォーク中は設定できません（一度終了してから）'); return; }
+  arPlacing = !arPlacing;
+  ev.target.classList.toggle('active', arPlacing);
+  if(arPlacing){
+    viewTop(); setViewBtn('btnTop');
+    if(!arStart) arStart = { x:8.2, y:2.0, fx:0, fz:-1 };  // 初回はとりあえず入口付近
+    arUpdateMarker();
+    toast('立ち位置の設定: 床をタップ→そのまま向きたい方へスワイプ。決めたら「ARウォーク」');
+  } else {
+    toast(arStart ? '立ち位置を設定しました。「ARウォーク」で開始できます' : '立ち位置の設定を終了しました');
   }
 };
 

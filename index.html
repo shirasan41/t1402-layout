@@ -177,14 +177,15 @@ function woodTex(base, streak){ // streak: 'r,g,b'
   });
 }
 function fabricTex(){ // FAT: ポリエステル100%のワッフル/ピケ調（凹凸の粒が菱格子に並ぶ編み地）
+  // ★地は明るめに保つ（material.colorと乗算されるため。暗いと色がくすむ）。凹凸は主に bumpMap で表現。
   return canvasTex((g,w,h)=>{
-    g.fillStyle = '#8f8f8f'; g.fillRect(0,0,w,h);         // 谷（目地）＝やや暗い地
+    g.fillStyle = '#dcdcdc'; g.fillRect(0,0,w,h);         // 谷（目地）＝淡いグレー
     const sp = 8, R = 3.6;                                 // 編み目ピッチ（256を割り切る）／粒の半径
     function stamp(X, Y, bright){
       const gr = g.createRadialGradient(X-1.4, Y-1.4, 0.3, X, Y, R);
-      gr.addColorStop(0,   `rgba(${bright+42|0},${bright+42|0},${bright+42|0},1)`);   // 山の頂（ハイライト）
-      gr.addColorStop(0.55,`rgba(${bright|0},${bright|0},${bright|0},0.98)`);
-      gr.addColorStop(1,   'rgba(92,92,92,0.15)');                                    // 裾は地へなじむ
+      gr.addColorStop(0,   'rgba(255,255,255,1)');                                    // 山の頂（ハイライト）
+      gr.addColorStop(0.55,`rgba(${bright|0},${bright|0},${bright|0},0.96)`);
+      gr.addColorStop(1,   'rgba(196,196,196,0.28)');                                 // 裾は淡く地へなじむ
       g.fillStyle = gr;
       g.beginPath(); g.arc(X, Y, R, 0, 7); g.fill();
     }
@@ -193,7 +194,7 @@ function fabricTex(){ // FAT: ポリエステル100%のワッフル/ピケ調（
         const cx = rx*sp + (ry%2)*sp/2;                    // 半目ずらしの菱格子
         const cy = ry*sp;
         const jz = (Math.random()-0.5)*1.0;                // ごく僅かな揺らぎ
-        const bright = 176 + Math.random()*58 | 0;         // 目ごとの明暗（杢調）
+        const bright = 232 + Math.random()*20 | 0;         // 目ごとの明暗（明るめ・杢調）
         // タイル継ぎ目を消すため上下左右へ回り込ませて重ね押し
         for(const ox of [-w,0,w]) for(const oy of [-h,0,h]){
           const X = cx+jz+ox, Y = cy+jz+oy;
@@ -224,7 +225,7 @@ const TEX = {
 };
 const WALL_M = new THREE.MeshStandardMaterial({map:TEX.plaster, roughness:0.95});
 function woodMat(tex, rough=0.6){ return new THREE.MeshStandardMaterial({map:tex, roughness:rough}); }
-function fabMat(color){ return new THREE.MeshStandardMaterial({color, map:TEX.fab, bumpMap:TEX.fab, bumpScale:1.4, roughness:0.96}); }
+function fabMat(color){ return new THREE.MeshStandardMaterial({color, map:TEX.fab, bumpMap:TEX.fab, bumpScale:1.7, roughness:0.9}); }
 function box(w,h,d,m,x=0,y=0,z=0){ const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m); o.position.set(x,y,z); o.castShadow=o.receiveShadow=true; return o; }
 function cyl(r,h,m,x=0,y=0,z=0,seg=20){ const o=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,seg),m); o.position.set(x,y,z); o.castShadow=true; return o; }
 

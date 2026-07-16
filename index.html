@@ -116,7 +116,7 @@
         余白ドラッグ：視点の回転<br>
         右ドラッグ・2本指・矢印キー：視点の上下左右移動<br>
         ホイール／ピンチ：ズーム<br>
-        人視点：ドラッグで見回し・矢印キーで歩く<br>
+        人視点（探検）：ドラッグ/スワイプで見回し・ピンチ/ホイールで前後・WASD/矢印キーで移動<br>
         📍立ち位置：真上図で床タップ→スワイプで向き。ARウォークはそこから開始
       </div>
     </div>
@@ -860,6 +860,11 @@ renderer.domElement.addEventListener('pointerdown', ev=>{
     placeDown(ev);
     return;
   }
+  if(walkMode){                         // 探検モード: ドラッグ=見回し／2本指=前後
+    walkPointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+    if(walkPointers.size===2) walkPinchDist = walkPointerDist();
+    return;
+  }
   if(ev.button!==0 || arActive) return;
   const hit = pick(ev);
   select(hit);
@@ -876,6 +881,20 @@ renderer.domElement.addEventListener('pointerdown', ev=>{
 });
 renderer.domElement.addEventListener('pointermove', ev=>{
   if(arPlacingDrag){ placeHeading(ev); return; }   // そのままスワイプで向きを指定
+  if(walkMode){
+    const prev = walkPointers.get(ev.pointerId); if(!prev) return;
+    walkPointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+    if(walkPointers.size >= 2){          // ピンチ=前後
+      const d = walkPointerDist();
+      if(walkPinchDist) walkForward((d - walkPinchDist) * 0.02);
+      walkPinchDist = d;
+    } else {                             // 1本指ドラッグ=見回し
+      walkYaw += (ev.clientX - prev.x) * 0.004;
+      walkPitch = THREE.MathUtils.clamp(walkPitch - (ev.clientY - prev.y) * 0.004, -1.2, 1.2);
+      applyWalkCam();
+    }
+    return;
+  }
   if(!dragging || !selected) return;
   const r = renderer.domElement.getBoundingClientRect();
   mouse.x = ((ev.clientX-r.left)/r.width)*2-1;
@@ -888,10 +907,12 @@ renderer.domElement.addEventListener('pointermove', ev=>{
     selected.position.set(nx, 0, nz);
   }
 });
-window.addEventListener('pointerup', ()=>{
+window.addEventListener('pointerup', ev=>{
+  if(walkMode){ walkPointers.delete(ev.pointerId); walkPinchDist = 0; return; }
   if(arPlacingDrag){ arPlacingDrag = false; controls.enabled = true; return; }
   dragging = false; controls.enabled = true;
 });
+window.addEventListener('pointercancel', ev=>{ if(walkMode){ walkPointers.delete(ev.pointerId); walkPinchDist = 0; } });
 window.addEventListener('keydown', ev=>{
   if(!selected || editLocked) return;
   if(ev.key==='q'||ev.key==='Q') selected.rotation.y += THREE.MathUtils.degToRad(15);
@@ -933,9 +954,9 @@ document.getElementById('chkOld').onchange = e=> movables.forEach(m=>{ if(m.user
 function setViewBtn(id){
   ['btnTop','btn3d','btnWalk'].forEach(b=> document.getElementById(b).classList.toggle('active', b===id));
 }
-document.getElementById('btnTop').onclick = ()=>{ viewTop(); setViewBtn('btnTop'); };
-document.getElementById('btn3d').onclick = ()=>{ view3d(); setViewBtn('btn3d'); };
-document.getElementById('btnWalk').onclick = ()=>{ viewWalk(); setViewBtn('btnWalk'); };
+document.getElementById('btnTop').onclick = ()=>{ exitWalk(); viewTop(); setViewBtn('btnTop'); };
+document.getElementById('btn3d').onclick = ()=>{ exitWalk(); view3d(); setViewBtn('btn3d'); };
+document.getElementById('btnWalk').onclick = ()=>{ enterWalk(); setViewBtn('btnWalk'); };
 
 const LS_KEY = 't1402-layout-v5';
 // 共有保存（Supabase REST・誰でも読み書き可のレイアウト共有テーブル）
@@ -1272,7 +1293,7 @@ document.getElementById('btnAR').onclick = async ev=>{
     window.addEventListener('deviceorientation', onDevO);
     window.addEventListener('devicemotion', onMotion);
     onScrO(); window.addEventListener('orientationchange', onScrO);
-    arActive = true; controls.enabled = false;
+    arActive = true; controls.enabled = false; walkMode = false;
     arPlacing = false; arPlacingDrag = false;
     document.getElementById('btnHere').classList.remove('active');
     if(arStart){
@@ -1303,7 +1324,7 @@ document.getElementById('btnHere').onclick = ev=>{
   arPlacing = !arPlacing;
   ev.target.classList.toggle('active', arPlacing);
   if(arPlacing){
-    viewTop(); setViewBtn('btnTop');
+    exitWalk(); viewTop(); setViewBtn('btnTop');
     if(!arStart) arStart = { x:8.2, y:2.0, fx:0, fz:-1 };  // 初回はとりあえず入口付近
     arUpdateMarker();
     toast('立ち位置の設定: 床をタップ→そのまま向きたい方へスワイプ。決めたら「ARウォーク」');
@@ -1311,6 +1332,73 @@ document.getElementById('btnHere').onclick = ev=>{
     toast(arStart ? '立ち位置を設定しました。「ARウォーク」で開始できます' : '立ち位置の設定を終了しました');
   }
 };
+
+/* ================= 探検モード（人視点・VRChat風の一人称移動） =================
+   ドラッグ/スワイプ=見回し ／ ピンチ・ホイール=前後 ／ WASD・矢印キー=移動 */
+let walkMode = false;
+let walkYaw = 0, walkPitch = 0;          // yaw=0で北(-z)を正面
+const WALK_EYE = 1.5;
+const walkKeys = {};
+const walkPointers = new Map();
+let walkPinchDist = 0;
+function applyWalkCam(){
+  const cp = Math.cos(walkPitch), sp = Math.sin(walkPitch);
+  const dir = new THREE.Vector3(Math.sin(walkYaw)*cp, sp, -Math.cos(walkYaw)*cp);
+  camera.lookAt(camera.position.x+dir.x, camera.position.y+dir.y, camera.position.z+dir.z);
+}
+function walkClampMove(dx, dz){          // 壁の外へ出ないよう軸ごとに判定（壁ずり）
+  const P = camera.position;
+  const nx = THREE.MathUtils.clamp(P.x + dx, 0.28, ROOM_W-0.28);
+  if(inRoom(nx, -P.z)) P.x = nx;
+  const nzRoom = THREE.MathUtils.clamp(-(P.z + dz), 0.28, ROOM_D-0.28);
+  if(inRoom(P.x, nzRoom)) P.z = Z(nzRoom);
+}
+function walkForward(amount){            // 視線水平方向へ前後（+で前進）
+  walkClampMove(Math.sin(walkYaw)*amount, -Math.cos(walkYaw)*amount);
+  applyWalkCam();
+}
+function walkPointerDist(){
+  const a = [...walkPointers.values()]; if(a.length<2) return 0;
+  return Math.hypot(a[0].x-a[1].x, a[0].y-a[1].y);
+}
+function enterWalk(){
+  walkMode = true; arActive = false; controls.enabled = false;
+  arPlacing = false; document.getElementById('btnHere').classList.remove('active');
+  let px = camera.position.x, py = -camera.position.z;
+  if(!inRoom(px, py) || camera.position.y > 3){ px = 8.2; py = 1.2; walkYaw = 0; walkPitch = 0; } // 俯瞰/室外からは入口へ
+  camera.position.set(THREE.MathUtils.clamp(px,0.3,ROOM_W-0.3), WALK_EYE, Z(THREE.MathUtils.clamp(py,0.3,ROOM_D-0.3)));
+  applyWalkCam();
+  toast('探検モード: ドラッグで見回し／ピンチ・ホイールで前後／WASD・矢印キーで移動');
+}
+function exitWalk(){ walkMode = false; controls.enabled = true; for(const k in walkKeys) walkKeys[k]=false; walkPointers.clear(); }
+function walkTick(dt){
+  const spd = (walkKeys['shift'] ? 8.5 : 5.0);   // 移動速度（速め）
+  const fwd = new THREE.Vector3(Math.sin(walkYaw), 0, -Math.cos(walkYaw));
+  const right = new THREE.Vector3(Math.cos(walkYaw), 0, Math.sin(walkYaw));
+  const mv = new THREE.Vector3();
+  if(walkKeys['arrowup']   || walkKeys['w']) mv.add(fwd);
+  if(walkKeys['arrowdown'] || walkKeys['s']) mv.sub(fwd);
+  if(walkKeys['arrowright']|| walkKeys['d']) mv.add(right);
+  if(walkKeys['arrowleft'] || walkKeys['a']) mv.sub(right);
+  if(mv.lengthSq() > 0){ mv.normalize().multiplyScalar(spd*dt); walkClampMove(mv.x, mv.z); applyWalkCam(); }
+}
+renderer.domElement.addEventListener('wheel', ev=>{
+  if(!walkMode) return;
+  ev.preventDefault();
+  walkForward(-ev.deltaY * 0.006);       // ホイール上=前進
+}, {passive:false});
+window.addEventListener('keydown', ev=>{
+  if(!walkMode) return;
+  const k = ev.key.toLowerCase();
+  if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(k)){ walkKeys[k]=true; ev.preventDefault(); }
+  if(ev.key==='Shift') walkKeys['shift']=true;
+});
+window.addEventListener('keyup', ev=>{
+  const k = ev.key.toLowerCase();
+  if(k in walkKeys) walkKeys[k]=false;
+  if(ev.key==='Shift') walkKeys['shift']=false;
+});
+window.addEventListener('blur', ()=>{ for(const k in walkKeys) walkKeys[k]=false; });
 
 /* ================= ループ ================= */
 const clock = new THREE.Clock();
@@ -1323,13 +1411,17 @@ function resize(){
 window.addEventListener('resize', resize);
 resize();
 renderer.setAnimationLoop(()=>{
-  if(arActive) updateARCamera(); else controls.update();
-  // 照明（影）を視点に追従させる: カメラの回転に合わせて太陽の方位も回す
-  const az = controls.getAzimuthalAngle();
-  sun.position.set(controls.target.x + Math.sin(az+0.7)*9, 13, controls.target.z + Math.cos(az+0.7)*9);
-  sun.target.position.set(controls.target.x, 0, controls.target.z);
-  // 利用シーンの人物アニメーション
   const dt = clock.getDelta(), tt = clock.elapsedTime;
+  if(arActive) updateARCamera();
+  else if(walkMode) walkTick(dt);
+  else controls.update();
+  // 照明（影）を視点に追従させる: カメラの回転に合わせて太陽の方位も回す
+  const lx = walkMode ? camera.position.x : controls.target.x;
+  const lz = walkMode ? camera.position.z : controls.target.z;
+  const az = walkMode ? walkYaw : controls.getAzimuthalAngle();
+  sun.position.set(lx + Math.sin(az+0.7)*9, 13, lz + Math.cos(az+0.7)*9);
+  sun.target.position.set(lx, 0, lz);
+  // 利用シーンの人物アニメーション
   for(const p of scenePeople){
     if(p.mode === 'walk'){
       p.dist = (p.dist + dt*p.speed) % p.total;
